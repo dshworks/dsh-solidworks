@@ -1,0 +1,14 @@
+# dsh-solidworks bundle patch: mount the plugin as one composition row.
+#
+# `name` is the import specifier the loader resolves; `id` is the handle a profile's
+# own cordis.patch.yml targets to configure it, for example:
+#
+#   - id: dsh-solidworks
+#     config:
+#       advertise: ['10.211.55.2']   # the address your VM reaches this machine on
+#
+# The plugin needs no hard services. `tools` and `systemPrompt` are picked up when
+# they exist; spawn mode (dsh on the Windows PC itself) uses `subprocess`.
+- insert:
+    - id: dsh-solidworks
+      name: '@dshworks/dsh-solidworks'

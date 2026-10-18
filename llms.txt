@@ -1,0 +1,44 @@
+# dsh-solidworks
+
+> SOLIDWORKS for DeepSeek Harness (dsh). A dsh plugin plus a Windows bridge (swbridge.exe) that lets the agent read, edit in memory, rebuild, render and export the models in a running SOLIDWORKS 2016 or later, on the same PC or in a Windows VM. Read-only by default; the Windows side enforces what may be written.
+
+Install: `dsh plugin --profile web add @dshworks/dsh-solidworks`. Same Windows PC: nothing else. dsh on a Mac with SOLIDWORKS in a Parallels VM: start dsh once, then in the VM run `\\Mac\Home\.dsh\dsh-solidworks\windows\pair.cmd`.
+
+## Tools
+
+Units: mm, degrees, kg everywhere; field names carry the unit. `doc` = path, file name or title of an open document; default the active one. Call `sw_status` first.
+
+- sw_status(pid?): release, instances, open documents, dialogs SOLIDWORKS waits on
+- sw_open(path, read_only=true, configuration?): .sldprt/.sldasm/.slddrw only
+- sw_inspect(doc?): type, units, configurations, material, custom properties, box_mm, counts
+- sw_features(doc?, offset=0, limit=200, include_folders=false)
+- sw_parameters(doc?, filter?, limit=500): dimensions (D1@Sketch1, value, unit, driven) and equations (global variables marked)
+- sw_components(doc?, depth=1, limit=500): assemblies only
+- sw_mass_properties(doc?): mass_kg, volume_mm3, surface_area_mm2, density_kg_m3, center_of_mass_mm
+- sw_edit(doc?, configuration?, suppress?, unsuppress?, variables?{name: expr}, dimensions?{name: number}, dimension_scope=this|all, properties?{name: text}, property_scope=file|configuration, rebuild=true): in memory; returns each change with before/after/ok and the rebuild result
+- sw_rebuild(doc?, force=true): ok=false when any feature fails
+- sw_export(doc?, path, overwrite=false, sheets=all|active): extension picks the format; bare names go to the bridge's output folder; returns path, bytes, sha256, and local_copy when fetched into the dsh workspace
+- sw_save(doc?): overwrite the source; SAVE_DISABLED unless the bridge runs with --allow-save
+- sw_close(doc?, discard=false): unsaved changes discarded only if this bridge made them
+- sw_view(doc?, view=isometric|trimetric|dimetric|front|back|left|right|top|bottom|current, width=960, height=720): PNG image
+
+## Errors
+
+A failed call returns "CODE: sentence". Codes: BAD_REQUEST, SW_NOT_RUNNING, SW_BUSY, SW_GONE, TIMEOUT, CANCELLED, NO_ACTIVE_DOC, DOC_NOT_OPEN, WRONG_DOC_TYPE, FILE_NOT_FOUND, OPEN_FAILED, PATH_DENIED, FILE_EXISTS, SAVE_FAILED, SAVE_DISABLED, DIRTY, MEMBER_MISSING, COM_ERROR, COM_NULL, NOT_CONNECTED, INTERNAL.
+
+- TIMEOUT and CANCELLED say whether the call never started (it will not run) or is still running (check before retrying).
+- SW_BUSY / TIMEOUT include the text of any SOLIDWORKS dialog; a person must answer it. Do not retry in a loop.
+- NOT_CONNECTED says where the pairing kit is. Relay that to the user; there is no workaround from the agent side.
+
+## Facts that are easy to get wrong
+
+- A successful sw_edit can leave features failing: read `rebuild.ok` and `rebuild.problems`.
+- Files open only in the SOLIDWORKS release that saved them or a later one.
+- sw_status lists documents with a window; parts an assembly loaded are counted in `loaded_without_window`.
+- The bridge never starts SOLIDWORKS. A second SOLIDWORKS session on one machine stops at startup on "A journal file could not be created" until someone clicks OK.
+
+## Links
+
+- README: https://github.com/dshworks/dsh-solidworks#readme
+- Contract (names, schemas, budgets, error codes): https://github.com/dshworks/dsh-solidworks/blob/main/protocol/tools.json
+- Security: https://github.com/dshworks/dsh-solidworks/blob/main/SECURITY.md

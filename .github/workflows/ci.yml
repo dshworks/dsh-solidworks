@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+
+  # The bridge builds deterministically under the pinned SDK. Rebuild it from source and
+  # require the hash committed in bridge/swbridge.exe.sha256, the one npm and the release ship.
+  bridge-reproducible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet build bridge -c Release -nologo -o bin
+      - run: echo "$(cat bridge/swbridge.exe.sha256)  bin/swbridge.exe" | sha256sum --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swbridge
+          path: bin/swbridge.exe
+
+  # Run the exe on real Windows: contract, paths, units, JSON and the HMAC vector, no SOLIDWORKS.
+  bridge-windows:
+    runs-on: windows-latest
+    needs: bridge-reproducible
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: swbridge
+      - run: .\swbridge.exe selftest
+      - run: .\swbridge.exe version
+      - name: status without SOLIDWORKS says so
+        shell: pwsh
+        run: |
+          $out = .\swbridge.exe status
+          if ($out -notmatch '^SW_NOT_RUNNING:') { throw "unexpected: $out" }
+          $out

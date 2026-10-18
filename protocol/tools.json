@@ -1,0 +1,226 @@
+{
+  "protocol": 1,
+  "units": "Lengths are millimetres, angles degrees, mass kilograms, everywhere, whatever the document's own units. Field names carry the unit (value_mm, mass_kg).",
+  "errors": {
+    "BAD_REQUEST": "the arguments do not match the tool's schema",
+    "SW_NOT_RUNNING": "no SOLIDWORKS is running in the Windows desktop session",
+    "SW_BUSY": "SOLIDWORKS is busy or showing a dialog",
+    "SW_GONE": "SOLIDWORKS stopped answering mid-call",
+    "TIMEOUT": "the call did not finish within its budget",
+    "CANCELLED": "the caller cancelled the call",
+    "NO_ACTIVE_DOC": "no document is active and none was named",
+    "DOC_NOT_OPEN": "the named document is not open",
+    "WRONG_DOC_TYPE": "the tool does not apply to this document type",
+    "FILE_NOT_FOUND": "the path does not exist on the Windows machine",
+    "OPEN_FAILED": "SOLIDWORKS refused to open the file",
+    "PATH_DENIED": "the path is outside the folders the bridge may write",
+    "FILE_EXISTS": "the target exists and overwrite was not requested",
+    "SAVE_FAILED": "SOLIDWORKS refused to write the file",
+    "SAVE_DISABLED": "saving over source documents is turned off",
+    "DIRTY": "the document has unsaved changes the bridge will not discard",
+    "MEMBER_MISSING": "the API member does not exist on this SOLIDWORKS version",
+    "COM_ERROR": "an unexpected COM failure",
+    "COM_NULL": "SOLIDWORKS returned nothing where an object was expected",
+    "NOT_CONNECTED": "no bridge is connected to dsh",
+    "INTERNAL": "a bug in the bridge"
+  },
+  "tools": [
+    {
+      "name": "sw_status",
+      "write": false,
+      "budget_s": 30,
+      "description": "Connection check and session overview. Call this first. Returns the SOLIDWORKS release the bridge is attached to (e.g. 2016 SP1), every SOLIDWORKS instance in the Windows desktop session, the open documents and which one is active. Pass pid to switch to another instance.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "pid": { "type": "integer", "description": "Attach to the SOLIDWORKS process with this id instead of the one in front." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_open",
+      "write": false,
+      "budget_s": 900,
+      "description": "Open a part (.sldprt), assembly (.sldasm) or drawing (.slddrw) in SOLIDWORKS and make it the active document. Opens read-only unless read_only is false, so edits stay in memory and the file on disk cannot change. Paths are Windows paths on the SOLIDWORKS machine. A document that is already open is activated, not reopened. Large assemblies can take minutes.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Windows path, e.g. C:\\work\\bracket.sldprt" },
+          "read_only": { "type": "boolean", "description": "Default true. false only when the edits must later be saved over the file." },
+          "configuration": { "type": "string", "description": "Configuration to open in; default is the one last saved." }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_inspect",
+      "write": false,
+      "budget_s": 120,
+      "description": "One-call summary of a document: type, file, document units, configurations and the active one, material, custom properties (file-level and active configuration), bounding box in mm, and counts (solid bodies, components). sw_features lists the features. doc defaults to the active document.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_features",
+      "write": false,
+      "budget_s": 120,
+      "description": "The FeatureManager tree in order: each feature's name, type, suppression state, and its rebuild error if it has one, with sketches nested under the features that use them. Folders and scene items are left out unless include_folders is true.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "offset": { "type": "integer", "description": "Skip this many top-level features. Default 0." },
+          "limit": { "type": "integer", "description": "At most this many top-level features. Default 200." },
+          "include_folders": { "type": "boolean", "description": "Also list folders, lights and other non-modeling entries. Default false." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_parameters",
+      "write": false,
+      "budget_s": 120,
+      "description": "The values that drive the model: every dimension (full name like D1@Sketch1, value in mm or degrees, whether it is driven) and every equation, with global variables marked. Use the names returned here in sw_edit.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "filter": { "type": "string", "description": "Only names containing this text (case-insensitive)." },
+          "limit": { "type": "integer", "description": "At most this many dimensions. Default 500." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_components",
+      "write": false,
+      "budget_s": 300,
+      "description": "The component tree of an assembly: instance name, file, referenced configuration, suppression state, fixed or floating, and position in mm. depth 1 lists top-level components only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open assembly. Default: the active document." },
+          "depth": { "type": "integer", "description": "Levels of sub-assemblies to expand. Default 1." },
+          "limit": { "type": "integer", "description": "At most this many components in total. Default 500." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_mass_properties",
+      "write": false,
+      "budget_s": 300,
+      "description": "Mass (kg), volume (mm3), surface area (mm2), density (kg/m3) and centre of mass (mm) of a part or assembly in its active configuration, using the materials assigned in SOLIDWORKS.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open part or assembly. Default: the active document." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_edit",
+      "write": true,
+      "budget_s": 600,
+      "description": "Change a document in memory, then rebuild once. Applies, in this order: configuration (activate), suppress, unsuppress, variables (global variables, by name, as expressions), dimensions (by full name, value in the dimension's own unit: mm or degrees), properties (custom properties). Returns every change with its before and after value, and the rebuild result. Nothing is written to disk; use sw_save or sw_export for that.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "configuration": { "type": "string", "description": "Activate this configuration first." },
+          "suppress": { "type": "array", "items": { "type": "string" }, "description": "Feature names to suppress." },
+          "unsuppress": { "type": "array", "items": { "type": "string" }, "description": "Feature names to unsuppress." },
+          "variables": { "type": "object", "additionalProperties": true, "description": "Global variable name -> new expression as a string, e.g. {\"Width\": \"60\"} or {\"Width\": \"\\\"Height\\\" / 2\"}." },
+          "dimensions": { "type": "object", "additionalProperties": true, "description": "Dimension full name -> new value as a number, in mm (lengths) or degrees (angles), e.g. {\"D1@Sketch1\": 60}." },
+          "dimension_scope": { "type": "string", "enum": ["this", "all"], "description": "Apply dimension values to the active configuration only (default) or to all configurations." },
+          "properties": { "type": "object", "additionalProperties": true, "description": "Custom property name -> text value. Created if missing." },
+          "property_scope": { "type": "string", "enum": ["file", "configuration"], "description": "File-level properties (default) or the active configuration's." },
+          "rebuild": { "type": "boolean", "description": "Rebuild after the changes. Default true." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_rebuild",
+      "write": false,
+      "budget_s": 900,
+      "description": "Rebuild a document and report what is wrong: every feature with a rebuild error or warning and the reason. ok is false when any feature fails, even if the rebuild itself ran.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "force": { "type": "boolean", "description": "Rebuild every feature (Ctrl+Q) instead of only what changed. Default true." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_export",
+      "write": true,
+      "budget_s": 900,
+      "description": "Write a copy of a document in another format; the open document and its file stay as they are. The extension picks the format: .step .stp .igs .iges .x_t .x_b .sat .stl .pdf .dxf .dwg .eprt .easm .edrw .jpg .png .tif, or .sldprt .sldasm .slddrw for a native copy. A bare file name goes into the bridge's output folder; any other path must be inside a folder the bridge may write. Returns the Windows path, size and sha256.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "path": { "type": "string", "description": "Target file, e.g. bracket.step or C:\\out\\bracket.step" },
+          "overwrite": { "type": "boolean", "description": "Replace an existing file. Default false." },
+          "sheets": { "type": "string", "enum": ["all", "active"], "description": "Drawings to PDF: every sheet (default) or the active one." }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_save",
+      "write": true,
+      "budget_s": 900,
+      "description": "Save a document over its own file. Refused unless the bridge was started with saving enabled, and impossible for a document opened read-only. To keep the original, use sw_export with a native extension instead.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_close",
+      "write": false,
+      "budget_s": 120,
+      "description": "Close a document. A document with unsaved changes is closed only if the bridge opened it and discard is true; changes someone made by hand are never thrown away.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "discard": { "type": "boolean", "description": "Throw away unsaved changes made through the bridge. Default false." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_view",
+      "write": false,
+      "budget_s": 120,
+      "description": "A picture of the model as SOLIDWORKS renders it, from a standard view, zoomed to fit. Returns a PNG image. The user's view orientation is restored afterwards. Use it to check a change visually.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "view": { "type": "string", "enum": ["isometric", "trimetric", "dimetric", "front", "back", "left", "right", "top", "bottom", "current"], "description": "Default isometric. Drawings always render the current sheet." },
+          "width": { "type": "integer", "description": "Pixels, 200-2000. Default 960." },
+          "height": { "type": "integer", "description": "Pixels, 200-2000. Default 720." }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

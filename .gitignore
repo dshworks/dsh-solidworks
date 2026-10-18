@@ -1,0 +1,7 @@
+node_modules/
+bridge/bin/
+bridge/obj/
+dist/
+bin/
+*.tgz
+obj/

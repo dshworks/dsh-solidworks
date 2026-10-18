@@ -1,0 +1,72 @@
+{
+  "name": "@dshworks/dsh-solidworks",
+  "description": "SOLIDWORKS for DeepSeek Harness: dsh reads, edits, rebuilds, renders and exports the models in a SOLIDWORKS 2016 or later, on the same Windows PC or in a Windows VM on your Mac. Read-only by default; the Windows side decides what may be written.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "protocol",
+    "bin/swbridge.exe",
+    "cordis.patch.yml",
+    "llms.txt",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dshworks/dsh-solidworks.git"
+  },
+  "homepage": "https://github.com/dshworks/dsh-solidworks#readme",
+  "bugs": {
+    "url": "https://github.com/dshworks/dsh-solidworks/issues"
+  },
+  "scripts": {
+    "build:bridge": "dotnet build bridge -c Release -nologo -o bin && rm -f bin/swbridge.exe.config && node scripts/check-pack.mjs",
+    "test": "vitest run",
+    "prepack": "node scripts/check-pack.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "solidworks",
+    "cad",
+    "mcp",
+    "mcp-server",
+    "solidworks-api",
+    "parallels"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-mcp-client": "^0.2.0-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-mcp-client": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.4",
+    "semver": "^7.8.5",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": "^0.2.0-rc.1"
+  }
+}
