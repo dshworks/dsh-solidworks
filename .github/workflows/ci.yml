@@ -50,5 +50,7 @@ jobs:
         shell: pwsh
         run: |
           $out = .\swbridge.exe status
-          if ($out -notmatch '^SW_NOT_RUNNING:') { throw "unexpected: $out" }
+          $code = $LASTEXITCODE
           $out
+          if ($code -ne 1 -or $out -notmatch '^SW_NOT_RUNNING:') { throw "expected SW_NOT_RUNNING and exit 1, got exit $code" }
+          exit 0
