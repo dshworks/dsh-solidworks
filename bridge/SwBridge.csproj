@@ -16,6 +16,9 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <Deterministic>true</Deterministic>
+    <!-- The SDK appends "+<git commit>" to the informational version by default, which
+         changes the exe's bytes on every commit and breaks the reproducible-build check. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

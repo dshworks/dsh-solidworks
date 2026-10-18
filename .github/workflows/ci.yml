@@ -29,11 +29,12 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet build bridge -c Release -nologo -o bin
-      - run: echo "$(cat bridge/swbridge.exe.sha256)  bin/swbridge.exe" | sha256sum --check
+      # Upload before checking, so a mismatch can be diffed against a local build.
       - uses: actions/upload-artifact@v4
         with:
           name: swbridge
           path: bin/swbridge.exe
+      - run: echo "$(cat bridge/swbridge.exe.sha256)  bin/swbridge.exe" | sha256sum --check
 
   # Run the exe on real Windows: contract, paths, units, JSON and the HMAC vector, no SOLIDWORKS.
   bridge-windows:
