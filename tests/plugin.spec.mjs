@@ -48,9 +48,10 @@ afterAll(() => {
 })
 
 describe('mounted in listen mode', () => {
-  it('registers the 13 contract tools with dsh deadlines past the bridge budgets', () => {
-    expect([...tools.keys()]).toEqual(['sw_status', 'sw_open', 'sw_inspect', 'sw_features', 'sw_parameters', 'sw_components',
-      'sw_mass_properties', 'sw_edit', 'sw_rebuild', 'sw_export', 'sw_save', 'sw_close', 'sw_view'])
+  it('registers the 21 contract tools with dsh deadlines past the bridge budgets', () => {
+    expect([...tools.keys()]).toEqual(['sw_status', 'sw_open', 'sw_new', 'sw_inspect', 'sw_features', 'sw_parameters',
+      'sw_components', 'sw_mass_properties', 'sw_probe', 'sw_edit', 'sw_build', 'sw_study', 'sw_rebuild', 'sw_assemble',
+      'sw_interference', 'sw_bom', 'sw_drawing', 'sw_export', 'sw_save', 'sw_close', 'sw_view'])
     expect(tools.get('sw_open').timeoutMs).toBe((900 + 30) * 1000)
   })
 
@@ -59,6 +60,7 @@ describe('mounted in listen mode', () => {
     expect(sections[0]).toMatchObject({ name: 'dsh-solidworks', interpolate: false })
     expect(typeof sections[0].text).toBe('string')
     expect(sections[0].text).toContain('mm, degrees and kg')
+    expect(sections[0].text).toContain('[x, y, z] in mm, Y up')
   })
 
   it('says where the pairing kit is when no bridge is connected, and never says the token', async () => {
@@ -80,6 +82,7 @@ describe('mounted in listen mode', () => {
         sw_status: () => ok({ solidworks: { release: 'SOLIDWORKS 2019 SP0' } }),
         sw_export: () => ok({ path: 'C:\\out\\bracket.step', bytes: exported.length, sha256: sha }),
         sw_save: () => ({ content: [{ type: 'text', text: 'SAVE_DISABLED: off' }], isError: true }),
+        sw_bom: ({ csv }) => ok({ rows: 1, items: [], ...(csv ? { csv: { path: 'C:\\out\\bom.csv', bytes: exported.length, sha256: sha } } : {}) }),
         'resources/read': ({ uri }) => ({ contents: [{ uri, blob: exported.toString('base64') }] }),
       },
     })
@@ -95,6 +98,11 @@ describe('mounted in listen mode', () => {
     expect(readFileSync(value.structuredContent.local_copy)).toEqual(exported)
 
     await expect(run('sw_save')).rejects.toThrow('SAVE_DISABLED: off')
+
+    // A BOM brings its CSV along; a BOM without one is passed through as it came.
+    const bom = await run('sw_bom', { csv: 'bom.csv' })
+    expect(bom.structuredContent.csv.local_copy).toBe(join(workspace, 'solidworks', 'bom.csv'))
+    expect((await run('sw_bom')).structuredContent).toEqual({ rows: 1, items: [] })
   })
 })
 
@@ -121,6 +129,11 @@ describe('fetching exports', () => {
     expect(result.structuredContent.local_copy).toBeUndefined()
     expect(result.structuredContent.local_copy_error).toContain('does not match')
     expect(existsSync(join(ws, 'solidworks', 'part.step'))).toBe(false)
+  })
+
+  it('leaves a result without a file as it is', async () => {
+    const result = { content: [], structuredContent: { rows: 3 } }
+    expect(await fetchExport(live(Buffer.from('x')), result, mkdtempSync(join(tmpdir(), 'swfetch-')), 'solidworks')).toBe(result)
   })
 
   it('names the file by its Windows name even off Windows', async () => {

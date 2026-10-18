@@ -12,8 +12,9 @@
  *
  * Then, on the Windows side: swbridge connect <this-host>:47321 <token> --out C:\dshsw\out
  *
- * It only opens copies of the stock SOLIDWORKS samples, read-only, and closes
- * what it opened. It needs a SOLIDWORKS 2016 or later and costs nothing.
+ * It only opens copies of the stock SOLIDWORKS samples, read-only, makes its own
+ * new documents, and closes everything it opened or made. It needs a SOLIDWORKS
+ * 2016 or later and costs nothing.
  */
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync } from 'node:fs'
@@ -64,6 +65,7 @@ const debris = (status.documents ?? []).filter((d) => d.path.toLowerCase().start
 if (debris.length > 0) throw new Error(`sample copies are already open in SOLIDWORKS (a previous run?): ${debris.map((d) => d.path).join(', ')}`)
 // The SOLIDWORKS may be someone's working session: remember what they had, and give it back.
 const theirs = (status.documents ?? []).map((d) => `${d.path}|dirty=${d.dirty}`).sort()
+const hiddenBefore = status.loaded_without_window ?? 0
 const theirActive = (status.documents ?? []).find((d) => d.active)?.path
 const release = status.solidworks?.release ?? ''
 check('status names a release', /^SOLIDWORKS 20\d\d SP\d+/.test(release), release)
@@ -157,12 +159,160 @@ if (!drw.isError) {
   await call('sw_close', { discard: true })
 }
 
+// --- design: parts, an assembly and a drawing made from nothing ---------------
+// Every number checked here is computed from the geometry asked for, not read
+// back from the tool that made it.
+const near = (a, b, tol = 1e-3) => typeof a === 'number' && Math.abs(a - b) <= tol
+const same3 = (a, b) => Array.isArray(a) && a.length === 3 && a.every((v, i) => near(v, b[i]))
+const made = [] // titles of documents this run created, closed at the end
+const fresh = async (type) => {
+  const r = facts(await call('sw_new', { type }))
+  if (r.title) made.push(r.title)
+  return r
+}
+
+const newPart = await fresh('part')
+check('new part is ours and has no file', newPart.type === 'part' && newPart.path === '' && newPart.opened_by_bridge === true, JSON.stringify(newPart))
+// A 100 x 60 x 20 plate on the top plane, a 20 mm hole through it from its top face, 5 mm corner fillets.
+const plate = facts(await call('sw_build', { steps: [
+  { op: 'sketch', on: 'top', entities: [{ type: 'rectangle', corner: [-50, 0, -30], opposite: [50, 0, 30] }] },
+  { op: 'extrude', depth: 20, name: 'Plate' },
+  { op: 'sketch', face_at: [0, 20, 0], entities: [{ type: 'circle', center: [0, 20, 0], diameter: 20 }] },
+  { op: 'extrude', cut: true, end: 'through_all', name: 'Hole' },
+  { op: 'fillet', radius: 5, edges_at: [[50, 10, 30], [50, 10, -30], [-50, 10, 30], [-50, 10, -30]], name: 'Corners' },
+] }))
+const top = 6000 - Math.PI * 100 - 4 * 25 * (1 - Math.PI / 4) // the top face's area, mm2
+check('build: every step made its feature', plate.ok === true && plate.steps?.map((s) => s.feature).join() === 'Sketch1,Plate,Sketch2,Hole,Corners', JSON.stringify(plate.steps?.map((s) => s.feature)))
+check('build: volume is the geometry asked for', near(plate.model?.volume_mm3, top * 20), `${plate.model?.volume_mm3} vs ${top * 20}`)
+check('build: box is the geometry asked for', same3(plate.model?.box_mm?.min, [-50, 0, -30]) && same3(plate.model?.box_mm?.max, [50, 20, 30]), JSON.stringify(plate.model?.box_mm))
+check('build: features carry drivable dimensions', plate.steps?.[1]?.dimensions?.[0]?.name === 'D1@Plate' && plate.steps?.[4]?.dimensions?.[0]?.value === 5, JSON.stringify(plate.steps?.[1]?.dimensions))
+
+const probe = facts(await call('sw_probe', { at: [[20, 20, 0], [20, 0, 0]] }))
+const [topFace, bottomFace] = probe.entities ?? []
+check('probe: the top face, by a point on it', topFace?.surface === 'plane' && same3(topFace?.normal, [0, 1, 0]) && near(topFace?.area_mm2, top), JSON.stringify(topFace))
+check('probe: two parallel faces 20 mm apart', near(probe.between?.distance_mm, 20) && probe.between?.parallel === true && same3(bottomFace?.normal, [0, -1, 0]), JSON.stringify(probe.between))
+const hole = facts(await call('sw_probe', { at: [[10, 10, 0]] })).entities?.[0]
+check('probe: the hole is a 20 mm cylinder on the Y axis', hole?.surface === 'cylinder' && near(hole?.diameter_mm, 20) && near(Math.abs(hole?.axis?.[1] ?? 0), 1) && hole?.feature === 'Hole', JSON.stringify(hole))
+
+const failing = facts(await call('sw_build', { steps: [
+  { op: 'sketch', face_at: [30, 0, 0], entities: [{ type: 'circle', center: [30, 0, 0], diameter: 6 }] },
+  { op: 'extrude', depth: 5, name: 'Peg' },
+  { op: 'fillet', radius: 1, edges_at: [[400, 0, 0]] },
+] }))
+check('build: a failing step undoes the steps before it', failing.ok === false && failing.failed?.step === 3 && failing.rolled_back?.includes('Peg') && near(failing.model?.volume_mm3, top * 20), JSON.stringify({ failed: failing.failed, rolled_back: failing.rolled_back, v: failing.model?.volume_mm3 }))
+const treeBefore = facts(await call('sw_features')).features?.map((f) => f.name).join() ?? ''
+const halfDrawn = facts(await call('sw_build', { steps: [
+  { op: 'sketch', face_at: [30, 20, 0], entities: [{ type: 'circle', center: [30, 20, 0], diameter: 6 }, { type: 'circle', center: [-30, 20, 0], diameter: 0 }] },
+] }))
+const treeAfter = facts(await call('sw_features')).features?.map((f) => f.name).join() ?? ''
+check('build: a sketch that fails halfway is not left behind', halfDrawn.failed?.step === 1 && halfDrawn.failed?.partial_sketch && halfDrawn.rolled_back?.includes(halfDrawn.failed.partial_sketch) && treeAfter === treeBefore,
+  JSON.stringify({ failed: halfDrawn.failed, rolled_back: halfDrawn.rolled_back, same: treeAfter === treeBefore }))
+const planes = facts(await call('sw_features')).features?.filter((f) => f.type === 'RefPlane').map((f) => f.name) ?? []
+const refused = facts(await call('sw_build', { steps: [{ op: 'delete', features: [planes[0]] }] }))
+check('build: deletes only what it built', refused.ok === false && refused.failed?.code === 'BAD_REQUEST' && /not made by sw_build/.test(refused.failed?.error ?? ''), refused.failed?.error)
+
+const study = facts(await call('sw_study', { variants: [{ dimensions: { 'D1@Plate': 10 } }, { label: 'thick', dimensions: { 'D1@Plate': 40 } }] }))
+check('study: each variant measured', near(study.variants?.[0]?.volume_mm3, top * 10) && near(study.variants?.[1]?.volume_mm3, top * 40) && study.variants?.[1]?.label === 'thick', JSON.stringify(study.variants?.map((v) => v.volume_mm3)))
+const depthNow = facts(await call('sw_parameters', { filter: 'D1@Plate' })).dimensions?.[0]?.value
+check('study: the model is put back', study.restored === true && depthNow === 20, `restored=${study.restored} D1@Plate=${depthNow}`)
+
+const sheet = await call('sw_view', { views: ['front', 'top', 'right', 'isometric'], display: 'shaded_edges', width: 800, height: 600 })
+const sheetPng = Buffer.from(sheet.content?.find((c) => c.type === 'image')?.data ?? '', 'base64')
+check('view: four views on one picture of the asked size', sheetPng.length > 24 && sheetPng.readUInt32BE(16) === 800 && sheetPng.readUInt32BE(20) === 600, `${sheetPng.length} bytes`)
+
+const platePath = `e2e-plate-${stamp}.sldprt`
+const saved = facts(await call('sw_save', { path: platePath }))
+check('save as: the new part gets a file, and stays ours', saved.bytes > 0 && /e2e-plate-/.test(saved.doc?.path ?? '') && saved.doc?.opened_by_bridge === true, JSON.stringify(saved).slice(0, 200))
+const plateFile = saved.doc?.path
+made[made.indexOf(newPart.title)] = saved.doc?.title // saved under a new name
+
+// A sketch the bridge did not make: saved, closed and reopened, the bridge has forgotten it.
+// Building on it and failing, or deleting what was built on it, must leave it in the part.
+const userPart = await fresh('part')
+await call('sw_build', { doc: userPart.title, steps: [{ op: 'sketch', on: 'top', name: 'UserSketch', entities: [{ type: 'circle', center: [0, 0, 0], diameter: 30 }] }] })
+const userFile = facts(await call('sw_save', { doc: userPart.title, path: `e2e-user-${stamp}.sldprt` })).doc?.path
+made.splice(made.indexOf(userPart.title), 1)
+await call('sw_close', { doc: userFile })
+const reopened = facts(await call('sw_open', { path: userFile }))
+const userTree = facts(await call('sw_features', { doc: userFile })).features?.map((f) => f.name).join() ?? ''
+const onTheirs = facts(await call('sw_build', { doc: userFile, steps: [
+  { op: 'extrude', sketch: 'UserSketch', depth: 5 },
+  { op: 'fillet', radius: 1, edges_at: [[400, 0, 0]] },
+] }))
+const userTreeAfter = facts(await call('sw_features', { doc: userFile })).features?.map((f) => f.name).join() ?? ''
+check('build: rolling back keeps a sketch the bridge did not make', reopened.opened_by_bridge === true && onTheirs.failed?.step === 2 && userTreeAfter === userTree && !onTheirs.rolled_back?.includes('UserSketch'),
+  JSON.stringify({ rolled_back: onTheirs.rolled_back, not_rolled_back: onTheirs.not_rolled_back, same: userTreeAfter === userTree }))
+const builtOnTheirs = facts(await call('sw_build', { doc: userFile, steps: [{ op: 'extrude', sketch: 'UserSketch', depth: 5, name: 'Puck' }] }))
+const deletedPuck = facts(await call('sw_build', { doc: userFile, steps: [{ op: 'delete', features: ['Puck'] }] }))
+const afterDelete = facts(await call('sw_features', { doc: userFile })).features?.map((f) => f.name).join() ?? ''
+check('build: deleting what it built keeps the user\'s sketch it consumed', builtOnTheirs.ok === true && deletedPuck.steps?.[0]?.kept?.includes('UserSketch') && afterDelete === userTree,
+  JSON.stringify({ step: deletedPuck.steps?.[0], same: afterDelete === userTree }))
+const taken = await call('sw_build', { doc: userFile, steps: [{ op: 'sketch', on: 'front', name: 'UserSketch', entities: [{ type: 'circle', center: [0, 0, 0], diameter: 5 }] }] })
+check('build: a name already in the part is refused before anything is made', errorCode(taken) === 'BAD_REQUEST' && facts(await call('sw_features', { doc: userFile })).features?.map((f) => f.name).join() === userTree, errorCode(taken))
+await call('sw_close', { doc: userFile, discard: true })
+
+const cup = await fresh('part')
+const cupBuilt = facts(await call('sw_build', { doc: cup.title, steps: [
+  { op: 'sketch', on: 'front', entities: [{ type: 'rectangle', corner: [-25, -25, 0], opposite: [25, 25, 0] }] },
+  { op: 'extrude', end: 'mid_plane', depth: 50 },
+  { op: 'shell', thickness: 2, faces_at: [[0, 25, 0]] },
+] }))
+check('build: a shelled cube, open at the top', near(cupBuilt.model?.volume_mm3, 50 ** 3 - 46 * 46 * 48), `${cupBuilt.model?.volume_mm3} vs 23432`)
+const tube = await fresh('part')
+const tubeBuilt = facts(await call('sw_build', { doc: tube.title, steps: [
+  { op: 'sketch', on: 'front', entities: [{ type: 'rectangle', corner: [10, 0, 0], opposite: [20, 30, 0] }, { type: 'centerline', from: [0, 0, 0], to: [0, 30, 0] }] },
+  { op: 'revolve' },
+  { op: 'chamfer', distance: 1, edges_at: [[0, 30, 20]] },
+] }))
+const tubeV = Math.PI * (400 - 100) * 30 - 0.5 * 2 * Math.PI * (20 - 1 / 3)
+check('build: a revolved tube with a chamfer', near(tubeBuilt.model?.volume_mm3, tubeV), `${tubeBuilt.model?.volume_mm3} vs ${tubeV}`)
+
+// Two plates stacked by mates, then a third pushed 10 mm into both.
+const assembly = await fresh('assembly')
+const stacked = facts(await call('sw_assemble', { doc: assembly.title, steps: [
+  { op: 'insert', path: plateFile },
+  { op: 'insert', path: plateFile, at: [0, 50, 0] },
+  { op: 'mate', type: 'coincident', a: { at: [20, 20, 0] }, b: { at: [20, 50, 0] }, align: 'anti_aligned' },
+] }))
+const second = stacked.components?.find((c) => /-2$/.test(c.name))
+check('assemble: a mate moves the second plate onto the first', stacked.ok === true && same3(second?.origin_mm, [0, 20, 0]), JSON.stringify(stacked.components))
+const concentric = facts(await call('sw_assemble', { doc: assembly.title, steps: [{ op: 'mate', type: 'concentric', a: { at: [10, 10, 0] }, b: { at: [10, 30, 0] } }] }))
+check('assemble: holes made concentric', concentric.ok === true && concentric.steps?.[0]?.mate, JSON.stringify(concentric.steps ?? concentric.failed))
+const clear = facts(await call('sw_interference', { doc: assembly.title }))
+check('interference: stacked plates only touch', clear.interferences === 0, JSON.stringify(clear))
+await call('sw_assemble', { doc: assembly.title, steps: [{ op: 'insert', path: plateFile, at: [0, 10, 0], fixed: true }] })
+const clash = facts(await call('sw_interference', { doc: assembly.title }))
+check('interference: a plate 10 mm into two others', clash.interferences === 2 && clash.items?.every((i) => near(i.volume_mm3, top * 10)), JSON.stringify(clash.items))
+// A part that is not open: loaded without a window for the insert, then left to the assembly.
+const bolt = facts(await call('sw_assemble', { doc: assembly.title, steps: [{ op: 'insert', path: `${samples}\\bolt.sldprt`, at: [300, 0, 0] }] }))
+check('assemble: inserts a file that is not open', bolt.ok === true && same3(bolt.steps?.[0]?.origin_mm, [300, 0, 0]), JSON.stringify(bolt.steps ?? bolt.failed))
+const bom = await call('sw_bom', { doc: assembly.title, csv: `e2e-bom-${stamp}.csv` })
+const plateRow = facts(bom).items?.find((i) => /^e2e-plate-/.test(i.file))
+check('bom: three of one plate, one bolt', facts(bom).rows === 2 && plateRow?.quantity === 3 && facts(bom).items?.find((i) => i.file === 'bolt.sldprt')?.quantity === 1, JSON.stringify(facts(bom).items?.map((i) => `${i.file} x${i.quantity}`)))
+const bomLocal = facts(await fetchExport(client, bom, mkdtempSync(join(tmpdir(), 'swe2e-')), 'out')).csv
+const csvText = bomLocal?.local_copy ? readFileSync(bomLocal.local_copy, 'utf8') : ''
+check('bom: the CSV arrives and says 3', /^\uFEFF?Item,File,Configuration,Quantity/.test(csvText) && /e2e-plate-\d+\.sldprt,Default,3\r\n/.test(csvText), csvText.slice(0, 160))
+
+const drawing = facts(await call('sw_drawing', { doc: plateFile }))
+if (drawing.doc?.title) made.push(drawing.doc.title)
+check('drawing: four views at the sheet scale, dimensions in', drawing.views?.length === 4 && drawing.views.every((v) => v.scale === drawing.sheet?.scale) && drawing.dimensions_imported >= 2,
+  JSON.stringify({ sheet: drawing.sheet, views: drawing.views?.map((v) => `${v.orientation}@${v.scale}`), dims: drawing.dimensions_imported }))
+const drawingPdf = await call('sw_export', { doc: drawing.doc?.title, path: `e2e-drawing-${stamp}.pdf` })
+const drawingPdfLocal = facts(await fetchExport(client, drawingPdf, mkdtempSync(join(tmpdir(), 'swe2e-')), 'out'))
+check('drawing: exports to PDF', (drawingPdfLocal.local_copy ? readFileSync(drawingPdfLocal.local_copy).subarray(0, 5).toString('latin1') : '') === '%PDF-', drawingPdfLocal.local_copy ?? drawingPdfLocal.local_copy_error)
+
+for (const title of [...made].reverse()) {
+  const r = await call('sw_close', { doc: title, discard: true })
+  if (r.isError) check(`close ${title}`, false, r.content?.[0]?.text)
+}
+
 if (theirActive) await call('sw_open', { path: theirActive }) // already open: this only re-activates it
 const after = facts(await call('sw_status'))
 check('nothing of ours left open', !(after.documents ?? []).some((d) => d.opened_by_bridge), JSON.stringify((after.documents ?? []).filter((d) => d.opened_by_bridge)))
 const theirsAfter = (after.documents ?? []).map((d) => `${d.path}|dirty=${d.dirty}`).sort()
 check('their documents are as they were', JSON.stringify(theirsAfter) === JSON.stringify(theirs), `${theirs.length} before, ${theirsAfter.length} after`)
 check('their active document is active again', (after.documents ?? []).find((d) => d.active)?.path === theirActive, theirActive ?? 'none')
+check('nothing of ours left loaded without a window', (after.loaded_without_window ?? 0) === hiddenBefore, `${hiddenBefore} before, ${after.loaded_without_window ?? 0} after`)
 
 report.failed = failed
 console.log(JSON.stringify({ release, failed, calls: report.calls.map((c) => `${c.name}:${c.ms}`).join(' ') }))

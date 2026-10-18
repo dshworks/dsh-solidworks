@@ -6,6 +6,7 @@
  * thrown but never documented, or a SOLIDWORKS member that 2016 does not have
  * turns CI red on Linux, without Windows or SOLIDWORKS.
  */
+import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,7 +38,14 @@ describe('protocol/tools.json', () => {
       expect(t.budget_s).toBeGreaterThan(0)
       expect(typeof t.write).toBe('boolean')
       expect(t.description.length).toBeGreaterThan(60)
+      expect(Object.keys(t).filter((k) => !['name', 'write', 'budget_s', 'description', 'input', 'fetch'].includes(k)), t.name).toEqual([])
+      if ('fetch' in t) expect(t.fetch, t.name).toBe(true)
     }
+    expect(contract.tools.filter((t) => t.fetch).map((t) => t.name)).toEqual(['sw_bom', 'sw_export'])
+  })
+
+  it('is in its house layout, so a diff shows the change and not a reformat', () => {
+    expect(execFileSync(process.execPath, [join(ROOT, 'scripts', 'format-contract.mjs'), '--check'], { encoding: 'utf8' })).toBe('')
   })
 
   it('the bridge has a handler for exactly the tools in the contract', () => {
@@ -61,11 +69,16 @@ describe('protocol/tools.json', () => {
  * The member names swbridge passes to Dispatch.Call/Get/Set/SetRef/CallRef: the
  * string literal after the first top-level comma. A regex cannot do this: in
  * CallRef(Get(doc, "Extension"), "SaveAs", ...) the member is the second literal.
+ * A call whose member is not a literal (a variable, a ?: choice) is returned in
+ * `unnamed`: this check could not see that member, so the bridge may not have one.
  */
 function membersCalled(text) {
   const names = new Set()
+  const unnamed = []
   for (const m of text.matchAll(/\b(?:Call|Get|Set|SetRef|CallRef)\(/g)) {
+    if (text[m.index - 1] === '.') continue // table.Call(...), not Dispatch
     let i = m.index + m[0].length
+    if (/^(?:object|Bridge)\s/.test(text.slice(i))) continue // the definitions themselves
     let depth = 0
     for (; i < text.length; i++) {
       const c = text[i]
@@ -76,20 +89,25 @@ function membersCalled(text) {
     }
     const literal = /^,\s*"([A-Za-z0-9_]+)"/.exec(text.slice(i))
     if (literal) names.add(literal[1])
+    else if (text[i] === ',') unnamed.push(text.slice(m.index, m.index + 80).split('\n')[0])
   }
-  return names
+  return { names, unnamed }
 }
 
 describe('SOLIDWORKS 2016 compatibility', () => {
   const rows = (text) => text.split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split('\t'))
   const table = rows(read('bridge/compat/members.tsv'))
   const sw2016 = new Set(rows(read('bridge/compat/sw2016.tsv')).map(([i, m]) => `${i}.${m}`))
-  const called = membersCalled(csharp)
+  const { names: called, unnamed } = membersCalled(csharp)
 
   it('every member the bridge calls is in the member table with its interface', () => {
     const listed = new Set(table.map(([, m]) => m))
-    expect(called.size).toBeGreaterThan(80)
+    expect(called.size).toBeGreaterThan(170)
     expect([...called].filter((m) => !listed.has(m))).toEqual([])
+  })
+
+  it('every call names its member as a literal, so the check above sees all of them', () => {
+    expect(unnamed).toEqual([])
   })
 
   it('every member in the table exists on that interface in SOLIDWORKS 2016 SP1', () => {

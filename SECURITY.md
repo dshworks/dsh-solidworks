@@ -7,9 +7,10 @@ are.
 ## What the bridge can do
 
 It runs as the signed-in Windows user, with that user's rights, and talks to the
-SOLIDWORKS running in the same desktop session. Through the 13 tools it can open
-documents the user can read, change them in memory, rebuild, render views, and
-write exports.
+SOLIDWORKS running in the same desktop session. Through its tools it can open
+documents the user can read, create new ones, change any open document in memory
+(values, features it builds, components and mates), rebuild, render views, and
+write exports, saved copies and BOM files into its folders.
 
 ## What it refuses
 
@@ -18,12 +19,17 @@ write exports.
 - Writing anywhere but its output folder (`Documents\dsh-solidworks`) or a folder
   given with `--allow-write`. Paths are resolved first, so `..` cannot escape.
   An existing file is replaced only when the call asks for it.
-- Discarding unsaved changes it did not make.
+- Discarding unsaved changes in a document it did not open or create.
+- Deleting features it did not build in this session, including a user's sketch
+  that a feature it built had consumed. Anything else can be suppressed, which is
+  reversible, not removed. A bridge restart forgets what it built, so after one
+  it deletes nothing. Building while the rollback bar is above the end of the
+  tree, where new features would land among the user's.
 - Starting, closing or answering SOLIDWORKS dialogs.
 - Running code: there is no macro, script or arbitrary-API tool. The complete list
   of SOLIDWORKS members it calls is `bridge/compat/members.tsv`.
-- Sending any file over the link except the exports it wrote in this session,
-  identified by their SHA-256 and re-hashed before sending.
+- Sending any file over the link except the exports and BOM files it wrote in
+  this session, identified by their SHA-256 and re-hashed before sending.
 
 ## The link to another machine
 
