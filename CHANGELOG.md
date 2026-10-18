@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.1 - 2026-10-18
+
+Fixes found by recording the README's clips: real sessions, watched.
+
+- Fixed: a document name with a SOLIDWORKS extension could resolve to another
+  document with the same stem. With a part `flange` and its drawing open,
+  `sw_export {doc: "flange.slddrw"}` exported the part, and the model spent
+  twenty calls working out why the PDF was wrong. An exact path, file name or
+  title now always wins, and a `.sldprt`, `.sldasm` or `.slddrw` name only
+  matches that kind of document.
+- `sw_build`: a cut sketched on a plane at the body's boundary points away from
+  the material and removed nothing; the model needed three calls to find
+  `reverse`. With no direction given, a cut that removes nothing is now made the
+  other way, and the step says `reversed`.
+- In documents the bridge opened or made, `sw_build` and `sw_assemble` zoom to
+  fit afterwards, so someone watching SOLIDWORKS sees what was built. A user's
+  own documents keep the view they set.
+- Plugin: when the bridge on another machine is older than the plugin (paired
+  before an update) and does not know a tool, the answer says to run `pair.cmd`
+  again, instead of "unknown tool".
+- `sw_build`'s description and the system-prompt guide give a concrete example
+  of Y-up (a 12 mm plate on the top plane has its top face at y = 12), after a
+  session put a top face at z = 12.
+- README leads with four clips of real sessions; how they are made is in
+  `scripts/clips/`. CONTRIBUTING.md and a bug report form.
+- Live: 66 of 66 checks on SOLIDWORKS 2016 SP1 and 2019 SP0 with this exe,
+  including the two fixes above.
+- Reproducible bridge build: `swbridge.exe` SHA-256
+  `fd6ec61c1e1200f3d45f618bdeed1a1140e78a88ecb68185bffe8a6b7fbd304b` (SDK 8.0.426).
+
 ## 0.2.0 - 2026-10-18
 
 From reading models to making them: 8 new tools, 21 in all.

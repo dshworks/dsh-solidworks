@@ -42,7 +42,7 @@ A failed call returns "CODE: sentence". Codes: BAD_REQUEST, SW_NOT_RUNNING, SW_B
 
 - A successful sw_edit or sw_build can leave features failing: read `rebuild.ok` and `rebuild.problems`. Check sw_build's `model.volume_mm3` and `model.box_mm` against the geometry you meant.
 - Pick points must lie on the entity (within 0.5 mm): the middle of an edge, a point inside a face. Inside a hole there is no face. Components move when mated; use their new positions.
-- A cut goes into the material by default; an extrude goes out of the face or along the plane's normal. Use reverse to flip either.
+- Y is up: the top face of a 12 mm plate on the top plane is at y = 12. An extrude goes out of the face or along the plane's normal; a cut that would remove nothing is made the other way (the step says reversed). Use reverse to choose.
 - Parts need a file (sw_save with a path) before sw_assemble can insert them or sw_drawing can draw them.
 - Files open only in the SOLIDWORKS release that saved them or a later one.
 - sw_status lists documents with a window; parts an assembly loaded are counted in `loaded_without_window`.

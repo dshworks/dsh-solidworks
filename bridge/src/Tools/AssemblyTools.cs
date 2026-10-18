@@ -66,6 +66,7 @@ static class AssemblyTools
         Call(asm, "ClearSelection2", true);
         Call(asm, "EditRebuild3");
         var rebuild = WriteTools.WhatsWrong(asm);
+        ModelTools.Frame(b, asm);
 
         var o = new Obj().Add("ok", failure == null && (bool)rebuild["ok"]).Add("doc", Docs.Brief(asm, b)).Add("steps", results);
         if (failure != null) o.Add("failed", failure).Add("note", "steps before the failed one stay applied");

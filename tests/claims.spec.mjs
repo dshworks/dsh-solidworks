@@ -85,11 +85,14 @@ describe('claims', () => {
     expect(read('cordis.patch.yml')).toContain(`name: '${pkg.name}'`)
   })
 
-  it('every relative link on the pages resolves', () => {
+  it('every relative link and image on the pages resolves', () => {
     for (const [page, text] of Object.entries(pages)) {
-      for (const [, target] of text.matchAll(/\]\(((?!https?:|#|mailto:)[^)\s]+)\)/g)) {
-        expect(existsSync(join(ROOT, target.split('#')[0])), `${page} -> ${target}`).toBe(true)
-      }
+      const targets = [
+        ...[...text.matchAll(/\]\(((?!https?:|#|mailto:)[^)\s]+)\)/g)].map((m) => m[1]),
+        ...[...text.matchAll(/<img src="((?!https?:)[^"]+)"/g)].map((m) => m[1]),
+      ]
+      expect(targets.some((t) => t.endsWith('.gif')), page).toBe(true)
+      for (const target of targets) expect(existsSync(join(ROOT, target.split('#')[0])), `${page} -> ${target}`).toBe(true)
     }
   })
 })

@@ -171,6 +171,7 @@ static class ModelTools
         }
         Call(doc, "EditRebuild3");
         var rebuild = WriteTools.WhatsWrong(doc);
+        Frame(b, doc);
 
         var o = new Obj().Add("ok", failure == null && (bool)rebuild["ok"]).Add("doc", Docs.Brief(doc, b)).Add("steps", results);
         if (failure != null)
@@ -183,6 +184,15 @@ static class ModelTools
             }
         }
         return o.Add("model", Summary(doc)).Add("rebuild", rebuild);
+    }
+
+    /// In a document the bridge opened or made, zoom to fit after changing it, so someone
+    /// watching SOLIDWORKS sees what was built. A user's own document keeps the view they set.
+    public static void Frame(Bridge b, object doc)
+    {
+        if (!b.Owns(doc)) return;
+        try { Call(doc, "ViewZoomtofit2"); }
+        catch (BridgeException e) when (e.Code != "SW_GONE") { /* a view nobody can see is no failure */ }
     }
 
     /// What a part is now: solid bodies, volume and bounding box. Enough for a caller to check a
@@ -410,12 +420,28 @@ static class ModelTools
             var twoWay = cond == K.EndThroughAllBoth;
             var t1 = twoWay ? K.EndThroughAll : cond;
             var t2 = twoWay ? K.EndThroughAll : K.EndBlind;
-            var feature = cut
-                ? Call(features, "FeatureCut3", !twoWay, false, reverse, t1, t2, depth, depth, draft != 0, false, draft < 0, false,
+            var merge = Json.Bool(s, "merge", true);
+            object Make(bool dir) => cut
+                ? Call(features, "FeatureCut3", !twoWay, false, dir, t1, t2, depth, depth, draft != 0, false, draft < 0, false,
                     draftRad, 0.0, false, false, false, false, false, true, true, false, false, false, K.StartSketchPlane, 0.0, false)
-                : Call(features, "FeatureExtrusion2", !twoWay, false, reverse, t1, t2, depth, depth, draft != 0, false, draft < 0, false,
-                    draftRad, 0.0, false, false, false, false, Json.Bool(s, "merge", true), true, true, K.StartSketchPlane, 0.0, false);
-            return Made(feature, s, what, cut ? "cut" : "extrude", $"{(cut ? "cut" : "extrude")} {sketch}");
+                : Call(features, "FeatureExtrusion2", !twoWay, false, dir, t1, t2, depth, depth, draft != 0, false, draft < 0, false,
+                    draftRad, 0.0, false, false, false, false, merge, true, true, K.StartSketchPlane, 0.0, false);
+            var feature = Make(reverse);
+            // A cut sketched on a plane at the body's boundary points away from the material by
+            // default and removes nothing (measured: six bolt holes on the top plane under a
+            // disc, three failed calls). When the caller left the direction open, the other
+            // way is the only cut that means anything: try it once and say so.
+            var reversed = false;
+            if (feature == null && cut && !s.ContainsKey("reverse") && !twoWay && cond != K.EndMidPlane)
+            {
+                SelectSketch(s, what);
+                feature = Make(!reverse);
+                reversed = feature != null;
+            }
+            var o = Made(feature, s, what, cut ? "cut" : "extrude",
+                $"{(cut ? "cut" : "extrude")} {sketch}{(cut ? " in either direction; is the sketch over the body?" : "")}");
+            if (reversed) o.Add("reversed", true).Add("note", "the cut pointed away from the material, so it was made the other way");
+            return o;
         }
 
         Obj Revolve(Args s, string what)

@@ -52,6 +52,7 @@ static class SelfTest
         Check("scale parse", SheetLayout.ParseScale("1:2") == (1, 2) && SheetLayout.ParseScale("1/2") == null && SheetLayout.ParseScale("0:2") == null, "");
         Check("scale ratio", SheetLayout.Ratio(0.5) == "1:2" && SheetLayout.Ratio(2) == "2:1", SheetLayout.Ratio(0.5));
         Layouts();
+        Names();
 
         var root = Path.Combine(Path.GetTempPath(), "swbridge-selftest");
         var b = new Bridge(new Options { OutDir = root });
@@ -88,6 +89,21 @@ static class SelfTest
         Check("a forced scale that cannot fit says so", !forced.Fits, "");
         var row = SheetLayout.Cells(false, new List<string> { "isometric", "top" });
         Check("without a front view, views go in a row", row["isometric"] == (0, 0) && row["top"] == (1, 0), "");
+    }
+
+    /// Which open document a name means. The case that went wrong: a part "flange" and its drawing
+    /// "flange - Sheet1" open together, and "flange.slddrw" resolved to the part.
+    static void Names()
+    {
+        const string part = @"C:\out\flange.sldprt", drawing = @"C:\out\flange.slddrw";
+        Check("a drawing's file name never means the part", Docs.Match(part, "flange", K.DocPart, "flange.slddrw") == 0, "");
+        Check("a drawing's file name means the drawing", Docs.Match(drawing, "flange - Sheet1", K.DocDrawing, "flange.slddrw") == 2, "");
+        Check("a path is exact", Docs.Match(part, "flange", K.DocPart, @"c:\OUT\flange.SLDPRT") == 2, "");
+        Check("a bare name is the part titled so, and only loosely its drawing", Docs.Match(part, "flange", K.DocPart, "flange") == 2 &&
+            Docs.Match(drawing, "flange - Sheet1", K.DocDrawing, "flange") == 1, "");
+        Check("a title with its extension hidden still matches", Docs.Match(part, "flange", K.DocPart, "flange.sldprt") == 2, "");
+        Check("a new document matches its title", Docs.Match("", "Part7", K.DocPart, "part7") == 2, "");
+        Check("other names do not match", Docs.Match(part, "flange", K.DocPart, "shaft") == 0, "");
     }
 
     static void Denied(Bridge b, string path)

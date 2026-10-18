@@ -99,6 +99,11 @@ describe('mounted in listen mode', () => {
 
     await expect(run('sw_save')).rejects.toThrow('SAVE_DISABLED: off')
 
+    // A bridge paired before an update does not know the new tools: say how to update it.
+    const stale = await run('sw_drawing').then(() => null, (e) => e)
+    expect(stale.message).toMatch(/^BAD_REQUEST: the bridge on TEST-PC is swbridge test and does not have sw_drawing; this plugin is \d/)
+    expect(stale.message).toContain('pair.cmd')
+
     // A BOM brings its CSV along; a BOM without one is passed through as it came.
     const bom = await run('sw_bom', { csv: 'bom.csv' })
     expect(bom.structuredContent.csv.local_copy).toBe(join(workspace, 'solidworks', 'bom.csv'))
