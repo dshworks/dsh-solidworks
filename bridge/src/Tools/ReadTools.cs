@@ -148,7 +148,7 @@ static class ReadTools
                 {
                     var dim = Call(dd, "GetDimension2", 0);
                     if (dim == null) continue;
-                    var name = $"{Str(Get(dim, "Name"))}@{owner}";
+                    var name = DimensionName(dim, owner);
                     if (!seen.Add(name)) continue;
                     if (filter.Length > 0 && name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
                     total++;
@@ -172,6 +172,20 @@ static class ReadTools
 
         return new Obj().Add("doc", Docs.Label(doc)).Add("configuration", Docs.ActiveConfiguration(doc))
             .Add("dimensions_total", total).Add("dimensions", dims).Add("equations", equations);
+    }
+
+    /// The name sw_edit takes for a dimension: "D1@Boss-Extrude1". A feature also displays
+    /// dimensions it does not own (an extrude shows the offset of the plane its sketch is on),
+    /// so the owner comes from the dimension's full name, "D1@Above@Part2.SLDPRT", not from the
+    /// feature it was found under.
+    public static string DimensionName(object dim, string foundUnder) =>
+        NameFromFull(Str(Get(dim, "FullName"))) ?? $"{Str(Get(dim, "Name"))}@{foundUnder}";
+
+    /// "D1@Above@Part2.SLDPRT" -> "D1@Above"; null when it does not have that shape.
+    public static string NameFromFull(string full)
+    {
+        var parts = (full ?? "").Split('@');
+        return parts.Length >= 2 && parts[0].Length > 0 && parts[1].Length > 0 ? $"{parts[0]}@{parts[1]}" : null;
     }
 
     public static Obj Dimension(object dim, string name)

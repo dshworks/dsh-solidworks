@@ -20,7 +20,7 @@ sealed class Options
 }
 
 /// One SOLIDWORKS session behind the tools: the STA thread, the attached instance, the
-/// documents this bridge opened, and the files it wrote.
+/// documents and features this bridge made, and the files it wrote.
 sealed class Bridge : IDisposable
 {
     public static readonly string Version =
@@ -29,7 +29,8 @@ sealed class Bridge : IDisposable
     public readonly Options Options;
     public readonly Session Session = new Session();
     readonly Sta sta = new Sta();
-    readonly HashSet<string> opened = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    readonly HashSet<string> owned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, HashSet<string>> built = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<string, string> exported = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     readonly object gate = new object();
 
@@ -48,20 +49,84 @@ sealed class Bridge : IDisposable
 
     public (string name, TimeSpan elapsed)? Busy => sta.Current;
 
-    public bool OpenedByBridge(string path)
+    /// Documents this bridge brought into SOLIDWORKS: files it opened and documents it created.
+    /// Only these may lose unsaved changes through sw_close; everything else is someone's work.
+    // Document keys come from COM calls; they are computed before taking the lock, which
+    // resources/read also takes, so a busy SOLIDWORKS never stalls a file transfer.
+
+    public bool Owns(object doc)
     {
-        if (string.IsNullOrEmpty(path)) return false;
-        lock (gate) return opened.Contains(Docs.Normalize(path));
+        var key = Docs.Key(doc);
+        lock (gate) return owned.Contains(key);
     }
 
     public void MarkOpened(string path)
     {
-        lock (gate) opened.Add(Docs.Normalize(path));
+        var key = Docs.FileKey(path);
+        lock (gate) owned.Add(key);
     }
 
-    public void MarkClosed(string path)
+    public void MarkCreated(object doc)
     {
-        lock (gate) opened.Remove(Docs.Normalize(path));
+        var key = Docs.Key(doc);
+        lock (gate) owned.Add(key);
+    }
+
+    /// A document saved under a new name keeps what the bridge knew about it, and only that:
+    /// anything remembered about a document that had the new name before is dropped first.
+    public void Rekey(string from, object doc)
+    {
+        var to = Docs.Key(doc);
+        lock (gate)
+        {
+            if (to == from) return;
+            var wasOwned = owned.Remove(from);
+            built.TryGetValue(from, out var features);
+            built.Remove(from);
+            owned.Remove(to);
+            built.Remove(to);
+            if (wasOwned) owned.Add(to);
+            if (features != null) built[to] = features;
+        }
+    }
+
+    public void Forget(string key)
+    {
+        lock (gate) { owned.Remove(key); built.Remove(key); }
+    }
+
+    /// Drop what the bridge remembers about documents that are no longer open, e.g. closed in
+    /// the SOLIDWORKS window. A file someone reopens later is theirs, not the bridge's.
+    public void Prune(HashSet<string> openKeys)
+    {
+        lock (gate)
+        {
+            owned.RemoveWhere(k => !openKeys.Contains(k));
+            foreach (var k in new List<string>(built.Keys)) if (!openKeys.Contains(k)) built.Remove(k);
+        }
+    }
+
+    /// Features sw_build created, by document. sw_build deletes only these.
+    public void MarkBuilt(object doc, string feature)
+    {
+        var key = Docs.Key(doc);
+        lock (gate)
+        {
+            if (!built.TryGetValue(key, out var set)) built[key] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            set.Add(feature);
+        }
+    }
+
+    public bool Built(object doc, string feature)
+    {
+        var key = Docs.Key(doc);
+        lock (gate) return built.TryGetValue(key, out var set) && set.Contains(feature);
+    }
+
+    public void Unbuilt(object doc, string feature)
+    {
+        var key = Docs.Key(doc);
+        lock (gate) if (built.TryGetValue(key, out var set)) set.Remove(feature);
     }
 
     /// Remember a file this bridge wrote, so it may be sent back by its hash. Nothing else on

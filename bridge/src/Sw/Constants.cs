@@ -43,6 +43,43 @@ static class K
     // swFeatureSuppressionAction_e
     public const int Suppress = 0, Unsuppress = 1;
 
+    // swUserPreferenceStringValue_e
+    public const int FileLocationsTemplates = 6, DefaultTemplatePart = 8, DefaultTemplateAssembly = 9, DefaultTemplateDrawing = 10;
+
+    // swEndConditions_e, swStartConditions_e
+    public const int EndBlind = 0, EndThroughAll = 1, EndMidPlane = 6, EndThroughAllBoth = 9, StartSketchPlane = 0;
+
+    // swFeatureFilletOptions_e: propagate along tangents | uniform radius | attach edges | keep features
+    public const int FilletOptions = 1 | 2 | 64 | 128;
+    // swFeatureFilletType_e, swFilletOverFlowType_e
+    public const int FilletSimple = 0, FilletOverflowDefault = 0;
+
+    // swFeatureChamferOption_e, swChamferType_e
+    public const int ChamferTangentPropagation = 4, ChamferAngleDistance = 1;
+
+    // swRefPlaneReferenceConstraints_e
+    public const int RefPlaneDistance = 8, RefPlaneFlip = 256;
+
+    // swImportModelItemsSource_e, swInsertAnnotation_e
+    public const int ImportFromEntireModel = 0, InsertDimensionsMarkedForDrawing = 32768;
+
+    // swViewDisplayMode_e, for IModelView.DisplayMode
+    public static readonly Dictionary<string, int> DisplayModes = new Dictionary<string, int>
+    {
+        ["wireframe"] = 1, ["hidden_removed"] = 2, ["hidden_grey"] = 3, ["shaded"] = 4, ["shaded_edges"] = 5,
+    };
+
+    // swNonInterferingComponentDisplay_e
+    public const int NonInterferingCurrent = 3;
+
+    // swDeleteSelectionOptions_e: 0 deletes the feature alone; its absorbed sketch stays
+    public const int DeleteNothingElse = 0;
+
+    // swSelectType_e
+    public const int SelEdges = 1, SelFaces = 2, SelVertices = 3, SelDatumPlanes = 4, SelDatumAxes = 5, SelSketches = 9,
+        SelSketchSegments = 10, SelSketchPoints = 11, SelDrawingViews = 12, SelDimensions = 14, SelComponents = 20,
+        SelMates = 21, SelBodyFeatures = 22, SelSolidBodies = 76;
+
     // swComponentSuppressionState_e
     public static readonly Dictionary<int, string> ComponentState = new Dictionary<int, string>
     {

@@ -47,7 +47,11 @@ static class SessionTools
         var active = Get(app, "ActiveDoc");
         var docs = new List<object>();
         var hidden = 0;
-        foreach (var d in Objects(Call(app, "GetDocuments")))
+        var open = Objects(Call(app, "GetDocuments"));
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var d in open) keys.Add(Docs.Key(d));
+        b.Prune(keys);
+        foreach (var d in open)
         {
             if (!Bool(Get(d, "Visible")) && !ReferenceEquals(d, active)) { hidden++; continue; }
             var brief = Docs.Brief(d, b);
@@ -125,8 +129,10 @@ static class SessionTools
         var path = Str(Call(doc, "GetPathName")) ?? "";
         var title = Str(Call(doc, "GetTitle"));
         var dirty = Bool(Call(doc, "GetSaveFlag"));
-        if (dirty && !(Json.Bool(a, "discard", false) && b.OpenedByBridge(path)))
-            throw new BridgeException("DIRTY", b.OpenedByBridge(path)
+        var ours = b.Owns(doc);
+        var key = Docs.Key(doc);
+        if (dirty && !(Json.Bool(a, "discard", false) && ours))
+            throw new BridgeException("DIRTY", ours
                 ? $"{title} has unsaved changes; pass discard: true to throw them away, or save or export first"
                 : $"{title} has unsaved changes and was not opened by this bridge process; the bridge will not discard work it did not create. Save or close it in SOLIDWORKS");
 
@@ -135,7 +141,11 @@ static class SessionTools
         if (path.Length > 0 && Call(app, "GetOpenDocumentByName", path) != null) Call(app, "CloseDoc", path);
         if (path.Length > 0 && Call(app, "GetOpenDocumentByName", path) != null)
             throw new BridgeException("COM_ERROR", $"SOLIDWORKS did not close {title}");
-        b.MarkClosed(path);
+        if (path.Length == 0)
+            foreach (var d in Objects(Call(app, "GetDocuments")))
+                if (Str(Call(d, "GetPathName")) == "" && Str(Call(d, "GetTitle")) == title)
+                    throw new BridgeException("COM_ERROR", $"SOLIDWORKS did not close {title}");
+        b.Forget(key);
         return new Obj().Add("closed", title).Add("path", path).Add("discarded_changes", dirty);
     }
 

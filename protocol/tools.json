@@ -32,9 +32,7 @@
       "description": "Connection check and session overview. Call this first. Returns the SOLIDWORKS release the bridge is attached to (e.g. 2016 SP1), every SOLIDWORKS instance in the Windows desktop session, the open documents and which one is active. Pass pid to switch to another instance.",
       "input": {
         "type": "object",
-        "properties": {
-          "pid": { "type": "integer", "description": "Attach to the SOLIDWORKS process with this id instead of the one in front." }
-        },
+        "properties": { "pid": { "type": "integer", "description": "Attach to the SOLIDWORKS process with this id instead of the one in front." } },
         "additionalProperties": false
       }
     },
@@ -55,15 +53,27 @@
       }
     },
     {
+      "name": "sw_new",
+      "write": true,
+      "budget_s": 120,
+      "description": "Create a new, empty part or assembly from SOLIDWORKS' default template (or the template given) and make it the active document. It has no file until sw_save gives it a path. Model a part with sw_build; put saved parts together with sw_assemble.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["part", "assembly"], "description": "Default part." },
+          "template": { "type": "string", "description": "Windows path of a .prtdot or .asmdot template. Default: the one set in SOLIDWORKS' options." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "sw_inspect",
       "write": false,
       "budget_s": 120,
       "description": "One-call summary of a document: type, file, document units, configurations and the active one, material, custom properties (file-level and active configuration), bounding box in mm, and counts (solid bodies, components). sw_features lists the features. doc defaults to the active document.",
       "input": {
         "type": "object",
-        "properties": {
-          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." }
-        },
+        "properties": { "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." } },
         "additionalProperties": false
       }
     },
@@ -127,6 +137,24 @@
       }
     },
     {
+      "name": "sw_probe",
+      "write": false,
+      "budget_s": 120,
+      "description": "Look at specific geometry in a part or assembly. With at: the face, edge or vertex at each model-space point [x, y, z] in mm (a point on an edge picks the edge, on a corner the vertex). Without at: whatever the user has selected in SOLIDWORKS right now, so you can work on what they point at. Faces report their surface type, area, normal or axis and diameter, and the feature that made them; edges report length, ends, centre and diameter. For exactly two entities, also the distance between them and the angle between their directions.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open part or assembly. Default: the active document." },
+          "at": {
+            "type": "array",
+            "items": { "type": "array", "items": { "type": "number" } },
+            "description": "Up to 8 model-space points in mm. Omit to read the user's selection."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "sw_edit",
       "write": true,
       "budget_s": 600,
@@ -138,13 +166,176 @@
           "configuration": { "type": "string", "description": "Activate this configuration first." },
           "suppress": { "type": "array", "items": { "type": "string" }, "description": "Feature names to suppress." },
           "unsuppress": { "type": "array", "items": { "type": "string" }, "description": "Feature names to unsuppress." },
-          "variables": { "type": "object", "additionalProperties": true, "description": "Global variable name -> new expression as a string, e.g. {\"Width\": \"60\"} or {\"Width\": \"\\\"Height\\\" / 2\"}." },
-          "dimensions": { "type": "object", "additionalProperties": true, "description": "Dimension full name -> new value as a number, in mm (lengths) or degrees (angles), e.g. {\"D1@Sketch1\": 60}." },
-          "dimension_scope": { "type": "string", "enum": ["this", "all"], "description": "Apply dimension values to the active configuration only (default) or to all configurations." },
+          "variables": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Global variable name -> new expression as a string, e.g. {\"Width\": \"60\"} or {\"Width\": \"\\\"Height\\\" / 2\"}."
+          },
+          "dimensions": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Dimension full name -> new value as a number, in mm (lengths) or degrees (angles), e.g. {\"D1@Sketch1\": 60}."
+          },
+          "dimension_scope": {
+            "type": "string",
+            "enum": ["this", "all"],
+            "description": "Apply dimension values to the active configuration only (default) or to all configurations."
+          },
           "properties": { "type": "object", "additionalProperties": true, "description": "Custom property name -> text value. Created if missing." },
-          "property_scope": { "type": "string", "enum": ["file", "configuration"], "description": "File-level properties (default) or the active configuration's." },
+          "property_scope": {
+            "type": "string",
+            "enum": ["file", "configuration"],
+            "description": "File-level properties (default) or the active configuration's."
+          },
           "rebuild": { "type": "boolean", "description": "Rebuild after the changes. Default true." }
         },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_build",
+      "write": true,
+      "budget_s": 600,
+      "description": "Model a part: run steps in order on a part, e.g. sketch a profile, extrude it, cut a hole, fillet the edges. Every coordinate is a model-space point [x, y, z] in mm, the space sw_probe and box_mm use: Y is up, the front plane is z = 0, top is y = 0, right is x = 0. Sketch points off the sketch plane are projected onto it. Faces and edges are picked by a point on them. With atomic (default) a failing step removes what this call made. Returns every feature made with its dimensions, which sw_edit can change later, and the part's volume and bounding box: compare them with what you meant to make.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open part. Default: the active document." },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": { "type": "string", "enum": ["sketch", "extrude", "revolve", "fillet", "chamfer", "shell", "plane", "delete"] },
+                "name": {
+                  "type": "string",
+                  "description": "Name for the feature the step makes; a name already in the part is refused before anything is made."
+                },
+                "on": {
+                  "type": "string",
+                  "description": "sketch, plane: front, top, right (in any language's template), or a plane's name. Default front."
+                },
+                "face_at": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "description": "sketch: a point on the flat face to sketch on, instead of on."
+                },
+                "entities": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": ["line", "centerline", "polyline", "rectangle", "circle", "arc"],
+                        "description": "centerline: construction line, the axis of a revolve."
+                      },
+                      "from": { "type": "array", "items": { "type": "number" }, "description": "line, centerline, arc: start point." },
+                      "to": { "type": "array", "items": { "type": "number" }, "description": "line, centerline, arc: end point." },
+                      "through": { "type": "array", "items": { "type": "number" }, "description": "arc: any point on the arc between from and to." },
+                      "points": {
+                        "type": "array",
+                        "items": { "type": "array", "items": { "type": "number" } },
+                        "description": "polyline: corner points in order."
+                      },
+                      "closed": { "type": "boolean", "description": "polyline: join the last point to the first. Default true." },
+                      "corner": { "type": "array", "items": { "type": "number" }, "description": "rectangle: one corner." },
+                      "opposite": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "description": "rectangle: the opposite corner. Edges run along the sketch's axes: the model axes on front, top and right, and on faces parallel to them."
+                      },
+                      "center": { "type": "array", "items": { "type": "number" }, "description": "circle: centre." },
+                      "diameter": { "type": "number", "description": "circle: mm." },
+                      "radius": { "type": "number", "description": "circle: mm, instead of diameter." }
+                    },
+                    "required": ["type"],
+                    "additionalProperties": false
+                  },
+                  "description": "sketch: what to draw. Each closed loop becomes a profile; loops inside loops make holes."
+                },
+                "sketch": { "type": "string", "description": "extrude, revolve: the sketch to use. Default: the last one this call drew." },
+                "depth": { "type": "number", "description": "extrude: mm; with mid_plane the total, centred on the sketch." },
+                "end": {
+                  "type": "string",
+                  "enum": ["blind", "through_all", "through_all_both", "mid_plane"],
+                  "description": "extrude: default blind (needs depth)."
+                },
+                "cut": { "type": "boolean", "description": "extrude, revolve: remove material instead of adding it." },
+                "reverse": {
+                  "type": "boolean",
+                  "description": "extrude, revolve: go the other way. An extrude goes along the sketch normal (out of a face it was sketched on); a cut goes into the material."
+                },
+                "draft": { "type": "number", "description": "extrude: draft angle in degrees; negative drafts outward." },
+                "merge": { "type": "boolean", "description": "extrude: join the existing body. Default true." },
+                "angle": {
+                  "type": "number",
+                  "description": "revolve: degrees, default 360; the sketch needs one centerline as the axis. chamfer: degrees, default 45."
+                },
+                "radius": { "type": "number", "description": "fillet: mm." },
+                "distance": { "type": "number", "description": "chamfer: mm." },
+                "edges_at": {
+                  "type": "array",
+                  "items": { "type": "array", "items": { "type": "number" } },
+                  "description": "fillet, chamfer: a point on each edge, best its middle."
+                },
+                "faces_at": {
+                  "type": "array",
+                  "items": { "type": "array", "items": { "type": "number" } },
+                  "description": "fillet, chamfer: a point on each face whose edges to round. shell: a point on each face to remove (none: a closed hollow)."
+                },
+                "thickness": { "type": "number", "description": "shell: wall thickness, mm." },
+                "outward": { "type": "boolean", "description": "shell: add the wall outside the current faces. Default false." },
+                "offset": { "type": "number", "description": "plane: mm from the plane in on; negative goes the other side." },
+                "features": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "delete: names of features sw_build made in this bridge session; nothing else can be deleted, and a sketch of the user's that one of them consumed stays. A delete cannot be undone, so with atomic it is the call's only step."
+                }
+              },
+              "required": ["op"],
+              "additionalProperties": false
+            },
+            "description": "Up to 60 steps, run in order."
+          },
+          "atomic": { "type": "boolean", "description": "Default true: if a step fails, undo this call's earlier steps." }
+        },
+        "required": ["steps"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_study",
+      "write": true,
+      "budget_s": 900,
+      "description": "Design study: try up to 50 variants of a model's dimensions and global variables in one call. Each variant is applied, rebuilt and measured (mass, volume, surface area, centre of mass, size, rebuild problems); afterwards every value is put back and checked. Use it to find a value that meets a target, e.g. the wall thickness that keeps mass under 0.2 kg. The document ends unchanged but marked modified.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open part or assembly. Default: the active document." },
+          "variants": {
+            "type": "array",
+            "description": "The variants, tried in order.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string", "description": "A name for the variant in the results." },
+                "dimensions": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Dimension full name -> value in mm or degrees, e.g. {\"D1@Boss-Extrude1\": 30}."
+                },
+                "variables": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Global variable name -> expression, e.g. {\"Wall\": \"2.5\"}."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["variants"],
         "additionalProperties": false
       }
     },
@@ -158,6 +349,156 @@
         "properties": {
           "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
           "force": { "type": "boolean", "description": "Rebuild every feature (Ctrl+Q) instead of only what changed. Default true." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_assemble",
+      "write": true,
+      "budget_s": 600,
+      "description": "Build an assembly: run steps in order on an open assembly (sw_new type assembly makes one). insert adds a saved part or sub-assembly with its origin at a point in mm; the first one is fixed in place unless fixed is false. mate constrains two references: a component's plane, the assembly's plane, or the face, edge or vertex at a point in assembly space. fix and float hold or free a component. Steps before a failing one stay. Returns every component with its origin in mm and the rebuild result, which names mates that fail; check positions with sw_components or sw_view.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open assembly. Default: the active document." },
+          "steps": {
+            "type": "array",
+            "description": "Up to 60 steps, run in order.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": { "type": "string", "enum": ["insert", "mate", "fix", "float"] },
+                "path": { "type": "string", "description": "insert: Windows path of a .sldprt or .sldasm file." },
+                "configuration": { "type": "string", "description": "insert: the configuration to use. Default: the file's active one." },
+                "at": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "description": "insert: where the component's origin goes, mm. Default [0, 0, 0]."
+                },
+                "fixed": {
+                  "type": "boolean",
+                  "description": "insert: fix it in place. Default true for the assembly's first component, else false."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["coincident", "concentric", "parallel", "perpendicular", "tangent", "distance", "angle"],
+                  "description": "mate: the kind of constraint."
+                },
+                "a": {
+                  "type": "object",
+                  "properties": {
+                    "component": { "type": "string", "description": "A component's name, e.g. bracket-1, for its plane." },
+                    "plane": {
+                      "type": "string",
+                      "description": "front, top, right or a plane's name: the component's, or the assembly's without component."
+                    },
+                    "at": {
+                      "type": "array",
+                      "items": { "type": "number" },
+                      "description": "Instead of plane: a point in assembly space, mm, on the face (or edge, vertex) to mate."
+                    },
+                    "kind": { "type": "string", "enum": ["face", "edge", "vertex"], "description": "With at: what to pick. Default face." }
+                  },
+                  "additionalProperties": false,
+                  "description": "mate: the first reference."
+                },
+                "b": {
+                  "type": "object",
+                  "properties": {
+                    "component": { "type": "string", "description": "A component's name, e.g. bracket-1, for its plane." },
+                    "plane": {
+                      "type": "string",
+                      "description": "front, top, right or a plane's name: the component's, or the assembly's without component."
+                    },
+                    "at": {
+                      "type": "array",
+                      "items": { "type": "number" },
+                      "description": "Instead of plane: a point in assembly space, mm, on the face (or edge, vertex) to mate."
+                    },
+                    "kind": { "type": "string", "enum": ["face", "edge", "vertex"], "description": "With at: what to pick. Default face." }
+                  },
+                  "additionalProperties": false,
+                  "description": "mate: the second reference."
+                },
+                "distance": { "type": "number", "description": "mate distance: mm." },
+                "angle": { "type": "number", "description": "mate angle: degrees." },
+                "align": {
+                  "type": "string",
+                  "enum": ["aligned", "anti_aligned", "closest"],
+                  "description": "mate: which way the normals or axes point. Default closest."
+                },
+                "flip": { "type": "boolean", "description": "mate: flip a distance or angle to the other side." },
+                "component": { "type": "string", "description": "fix, float: the component's name." }
+              },
+              "required": ["op"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["steps"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_interference",
+      "write": false,
+      "budget_s": 900,
+      "description": "Check an assembly for parts that overlap: every interfering pair (or group) of components with the volume they share in mm3, largest first. Touching faces do not count unless touching is true. 0 interferences means nothing overlaps.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open assembly. Default: the active document." },
+          "touching": { "type": "boolean", "description": "Count faces that only touch as interference too. Default false." },
+          "limit": { "type": "integer", "description": "At most this many interferences listed. Default 100." }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sw_bom",
+      "write": true,
+      "budget_s": 600,
+      "description": "Bill of materials of an assembly: each distinct file and configuration with its quantity and custom properties (configuration values override file values). mode parts (default) flattens sub-assemblies into the parts they contain; top counts the top-level components. Suppressed, envelope and excluded-from-BOM components are left out, as SOLIDWORKS does. With csv, also writes the table as a CSV file into the output folder (fetched into the workspace like an export).",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": { "type": "string", "description": "Path, file name or title of an open assembly. Default: the active document." },
+          "mode": { "type": "string", "enum": ["parts", "top"], "description": "Default parts." },
+          "properties": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Only these custom properties, in this column order. Default: all of them."
+          },
+          "csv": { "type": "string", "description": "Also write a CSV, e.g. bom.csv." },
+          "overwrite": { "type": "boolean", "description": "Replace an existing CSV. Default false." },
+          "limit": { "type": "integer", "description": "At most this many rows in the answer (the CSV has all). Default 1000." }
+        },
+        "additionalProperties": false
+      },
+      "fetch": true
+    },
+    {
+      "name": "sw_drawing",
+      "write": true,
+      "budget_s": 900,
+      "description": "Make a drawing of a saved part or assembly: a new drawing from the default (or given) template with the views laid out in projection (first or third angle, as the sheet says or as asked), at the largest standard scale that fits above the title block, and the model's dimensions brought in. The drawing stays open as a new document: sw_view shows it, sw_export writes it as PDF or DXF, sw_save with a .slddrw path keeps it.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "doc": {
+            "type": "string",
+            "description": "Path, file name or title of an open part or assembly with a file. Default: the active document."
+          },
+          "views": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["front", "top", "right", "back", "left", "bottom", "isometric", "trimetric", "dimetric"] },
+            "description": "Default front, top, right, isometric."
+          },
+          "scale": { "type": "string", "description": "Sheet scale like 1:2 or 2:1. Default: the largest standard scale that fits." },
+          "projection": { "type": "string", "enum": ["first", "third"], "description": "Default: the template sheet's own." },
+          "dimensions": { "type": "boolean", "description": "Bring in the model's dimensions. Default true." },
+          "template": { "type": "string", "description": "Windows path of a .drwdot template. Default: the one set in SOLIDWORKS' options." }
         },
         "additionalProperties": false
       }
@@ -177,17 +518,20 @@
         },
         "required": ["path"],
         "additionalProperties": false
-      }
+      },
+      "fetch": true
     },
     {
       "name": "sw_save",
       "write": true,
       "budget_s": 900,
-      "description": "Save a document over its own file. Refused unless the bridge was started with saving enabled, and impossible for a document opened read-only. To keep the original, use sw_export with a native extension instead.",
+      "description": "Save a document. With path: save it as that file, with its native extension (.sldprt, .sldasm, .slddrw), in the bridge's output folder or a folder it may write; the open document becomes that file and any original file stays as it was. This is how a document from sw_new or sw_drawing gets a file, and parts must have one before sw_assemble can use them. Without path: save over the document's own file, refused unless the bridge was started with saving enabled.",
       "input": {
         "type": "object",
         "properties": {
-          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." }
+          "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
+          "path": { "type": "string", "description": "Save as this file, e.g. bracket.sldprt (a bare name goes into the output folder)." },
+          "overwrite": { "type": "boolean", "description": "With path: replace an existing file. Default false." }
         },
         "additionalProperties": false
       }
@@ -210,12 +554,26 @@
       "name": "sw_view",
       "write": false,
       "budget_s": 120,
-      "description": "A picture of the model as SOLIDWORKS renders it, from a standard view, zoomed to fit. Returns a PNG image. The user's view orientation is restored afterwards. Use it to check a change visually.",
+      "description": "A picture of the model as SOLIDWORKS renders it, zoomed to fit: one standard view, or several on one labelled contact sheet (e.g. front, top, right, isometric) so a single image shows the whole shape. display picks shaded, wireframe or hidden-line rendering. Returns a PNG. The user's view, display mode and active document are restored afterwards. Use it after every change you make to the geometry.",
       "input": {
         "type": "object",
         "properties": {
           "doc": { "type": "string", "description": "Path, file name or title of an open document. Default: the active document." },
-          "view": { "type": "string", "enum": ["isometric", "trimetric", "dimetric", "front", "back", "left", "right", "top", "bottom", "current"], "description": "Default isometric. Drawings always render the current sheet." },
+          "view": {
+            "type": "string",
+            "enum": ["front", "top", "right", "back", "left", "bottom", "isometric", "trimetric", "dimetric", "current"],
+            "description": "One view. Default isometric. Drawings always render the current sheet."
+          },
+          "views": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["front", "top", "right", "back", "left", "bottom", "isometric", "trimetric", "dimetric"] },
+            "description": "Up to 6 views on one picture, instead of view."
+          },
+          "display": {
+            "type": "string",
+            "enum": ["shaded_edges", "shaded", "wireframe", "hidden_removed", "hidden_grey"],
+            "description": "How to render. Default: as the user has it."
+          },
           "width": { "type": "integer", "description": "Pixels, 200-2000. Default 960." },
           "height": { "type": "integer", "description": "Pixels, 200-2000. Default 720." }
         },

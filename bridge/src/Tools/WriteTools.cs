@@ -140,7 +140,7 @@ static class WriteTools
     static Obj Change(string kind, string name, object before, object after, bool ok, string error) =>
         new Obj().Add("kind", kind).Add("name", name).Add("ok", ok).Add("before", before).Add("after", after).Opt("error", error);
 
-    static string SetValueError(int status) => status switch
+    public static string SetValueError(int status) => status switch
     {
         0 => null,
         2 => "invalid value",
@@ -219,8 +219,15 @@ static class WriteTools
             .Add("warnings", K.Bits(warnings, K.SaveWarnings)).Add("seconds", Math.Round(clock.Elapsed.TotalSeconds, 2));
     }
 
+    static readonly Dictionary<int, string> NativeExtension = new Dictionary<int, string>
+    {
+        [K.DocPart] = ".sldprt", [K.DocAssembly] = ".sldasm", [K.DocDrawing] = ".slddrw",
+    };
+
     public static Obj Save(Bridge b, object app, Args a)
     {
+        var target = Json.Str(a, "path");
+        if (!string.IsNullOrWhiteSpace(target)) return SaveAs(b, app, a, target);
         if (!b.Options.AllowSave)
             throw new BridgeException("SAVE_DISABLED",
                 "this bridge does not save over source files; to keep the change, sw_export a native copy " +
@@ -244,6 +251,39 @@ static class WriteTools
         if ((after.LastWriteTimeUtc, after.Length) == stamp)
             throw new BridgeException("SAVE_FAILED", $"SOLIDWORKS reported a save but {path} did not change; is the file marked read-only in Windows?");
         return FileFacts(path).Add("doc", Docs.Label(doc)).Add("warnings", K.Bits(warnings, K.SaveWarnings));
+    }
+
+    /// Save a document as a new file in a folder the bridge may write. The document becomes
+    /// that file; whatever file it came from is not touched.
+    static Obj SaveAs(Bridge b, object app, Args a, string requested)
+    {
+        var doc = Docs.Resolve(app, Json.Str(a, "doc"));
+        var type = Docs.Type(doc);
+        var target = b.OutputPath(requested);
+        var want = NativeExtension.TryGetValue(type, out var e) ? e : null;
+        if (want == null || !string.Equals(Path.GetExtension(target), want, StringComparison.OrdinalIgnoreCase))
+            throw new BridgeException("BAD_REQUEST", $"{Docs.Label(doc)} is {K.DocType(type)}, so it saves as {want}; sw_export writes other formats");
+        var own = Str(Call(doc, "GetPathName"));
+        if (!string.IsNullOrEmpty(own) && Docs.Normalize(own) == Docs.Normalize(target))
+            return Save(b, app, new Args { ["doc"] = Json.Str(a, "doc") }); // its own file: the in-place rules apply
+        if (File.Exists(target))
+        {
+            if (!Json.Bool(a, "overwrite", false)) throw new BridgeException("FILE_EXISTS", $"{target} exists; pass overwrite: true to replace it");
+            if (Call(app, "GetOpenDocumentByName", target) != null)
+                throw new BridgeException("FILE_EXISTS", $"{target} is open in SOLIDWORKS as another document; close it first");
+            File.Delete(target);
+        }
+
+        var key = Docs.Key(doc);
+        var args = new object[] { target, K.SaveAsCurrentVersion, K.SaveSilent, Nothing, 0, 0 };
+        var ok = Bool(CallRef(Get(doc, "Extension"), "SaveAs", args, 4, 5));
+        var errors = Convert.ToInt32(args[4]);
+        var warnings = Convert.ToInt32(args[5]);
+        if (!ok || !File.Exists(target))
+            throw new BridgeException("SAVE_FAILED", $"SOLIDWORKS did not save {target}: {Reasons(errors, K.SaveErrors)}",
+                new Dictionary<string, object> { ["errors"] = K.Bits(errors, K.SaveErrors), ["warnings"] = K.Bits(warnings, K.SaveWarnings) });
+        b.Rekey(key, doc);
+        return FileFacts(target).Add("doc", Docs.Brief(doc, b)).Add("warnings", K.Bits(warnings, K.SaveWarnings));
     }
 
     static string Reasons(int errors, Dictionary<int, string> names)

@@ -90,9 +90,18 @@ static class Docs
             .Opt("configuration", type == K.DocDrawing ? null : ActiveConfiguration(doc))
             .Add("read_only", Bool(Call(doc, "IsOpenedReadOnly")))
             .Add("dirty", Bool(Call(doc, "GetSaveFlag")))
-            .Add("opened_by_bridge", bridge.OpenedByBridge(path));
+            .Add("opened_by_bridge", bridge.Owns(doc));
     }
 
     public static string Normalize(string path) =>
         string.IsNullOrEmpty(path) ? "" : Path.GetFullPath(path).TrimEnd('\\').ToLowerInvariant();
+
+    /// What identifies a document across calls: its file, or its title until it has one.
+    public static string Key(object doc)
+    {
+        var path = Str(Call(doc, "GetPathName"));
+        return string.IsNullOrEmpty(path) ? "new:" + Str(Call(doc, "GetTitle")) : FileKey(path);
+    }
+
+    public static string FileKey(string path) => "file:" + Normalize(path);
 }

@@ -39,6 +39,15 @@ describe('claims', () => {
     expect(line.split(', ').sort()).toEqual(Object.keys(contract.errors).sort())
   })
 
+  it('the member count on the pages is the member table\'s', () => {
+    const rows = read('bridge/compat/members.tsv').split('\n').filter((l) => l && !l.startsWith('#')).length
+    for (const [page, text] of Object.entries(pages)) {
+      const claimed = [...text.matchAll(/(\d+) (?:members|个成员)/g)].map((m) => Number(m[1]))
+      expect(claimed.length, page).toBeGreaterThan(0)
+      for (const n of claimed) expect(n, page).toBe(rows)
+    }
+  })
+
   it('the unit test count on the pages is the number of tests', () => {
     const tests = readdirSync(join(ROOT, 'tests')).filter((f) => f.endsWith('.spec.mjs'))
       .map((f) => [...read(join('tests', f)).matchAll(/^\s+it\(/gm)].length).reduce((a, b) => a + b, 0)

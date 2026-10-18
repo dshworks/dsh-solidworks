@@ -1,7 +1,7 @@
 {
   "name": "@dshworks/dsh-solidworks",
   "description": "SOLIDWORKS for DeepSeek Harness: dsh reads, edits, rebuilds, renders and exports the models in a SOLIDWORKS 2016 or later, on the same Windows PC or in a Windows VM on your Mac. Read-only by default; the Windows side decides what may be written.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

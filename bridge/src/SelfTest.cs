@@ -16,7 +16,7 @@ static class SelfTest
     public static int Run()
     {
         var table = new ToolTable(); // throws if tools.json and the handlers disagree
-        Check("tools in contract", table.Tools.Count == 13, $"{table.Tools.Count}");
+        Check("tools in contract", table.Tools.Count == 21, $"{table.Tools.Count}");
         Check("error codes include TIMEOUT", new List<string>(table.ErrorCodes).Contains("TIMEOUT"), "");
 
         Check("hmac vector", Link.Mac("test-token", "dsh-solidworks/1 bridge AAAA BBBB") ==
@@ -42,6 +42,17 @@ static class SelfTest
         Check("addresses share a port", parsed.Count == 2 && parsed[0] == ("10.211.55.2", 47321) && parsed[1] == ("192.168.1.5", 47321), $"{parsed.Count}");
         Check("explicit ports", Link.ParseAddresses("a:1,b:2")[1] == ("b", 2), "");
 
+        Check("dimension owner from full name", ReadTools.NameFromFull("D1@Above@Part2.SLDPRT") == "D1@Above", "");
+        Check("odd full name falls back", ReadTools.NameFromFull("D1") == null, "");
+        Check("angle between axes", Math.Abs(Vec.AngleDeg(new double[] { 1, 0, 0 }, new double[] { 0, 2, 0 }) - 90) < 1e-12, "");
+        Check("opposite normals are 180", Math.Abs(Vec.AngleDeg(new double[] { 0, 1, 0 }, new double[] { 0, -1, 0 }) - 180) < 1e-9, "");
+        Check("letterbox wide window", ViewTool.Letterbox(1000, 400, 2.0) == (800, 400), $"{ViewTool.Letterbox(1000, 400, 2.0)}");
+        Check("letterbox tall request", ViewTool.Letterbox(500, 400, 2.0) == (500, 250), $"{ViewTool.Letterbox(500, 400, 2.0)}");
+        Check("csv quoting", BomTable.Csv(new List<string[]> { new[] { "a,b", "say \"hi\"", "x" } }) == "\"a,b\",\"say \"\"hi\"\"\",x\r\n", "");
+        Check("scale parse", SheetLayout.ParseScale("1:2") == (1, 2) && SheetLayout.ParseScale("1/2") == null && SheetLayout.ParseScale("0:2") == null, "");
+        Check("scale ratio", SheetLayout.Ratio(0.5) == "1:2" && SheetLayout.Ratio(2) == "2:1", SheetLayout.Ratio(0.5));
+        Layouts();
+
         var root = Path.Combine(Path.GetTempPath(), "swbridge-selftest");
         var b = new Bridge(new Options { OutDir = root });
         Check("bare name goes to out", b.OutputPath("a.step") == Path.Combine(root, "a.step"), b.OutputPath("a.step"));
@@ -53,6 +64,30 @@ static class SelfTest
 
         Console.WriteLine(failures == 0 ? "selftest ok" : $"selftest: {failures} failed");
         return failures == 0 ? 0 : 1;
+    }
+
+    /// The drawing layout on an ANSI A sheet (279.4 x 215.9 mm): projection placement, alignment
+    /// of projected views, and the scale chosen for a small and a large model.
+    static void Layouts()
+    {
+        var views = new List<string> { "front", "top", "right", "isometric" };
+        var third = SheetLayout.Cells(false, views);
+        Check("third angle: top above, right to the right, iso in the free corner",
+            third["front"] == (1, 1) && third["top"] == (1, 0) && third["right"] == (2, 1) && third["isometric"] == (2, 0), "");
+        var first = SheetLayout.Cells(true, views);
+        Check("first angle: top below, right to the left, iso where the grid stays 2 x 2",
+            first["front"] == (1, 1) && first["top"] == (1, 2) && first["right"] == (0, 1) && first["isometric"] == (0, 2), "");
+        var plate = SheetLayout.Plan(0.2794, 0.2159, false, new[] { 0.1, 0.02, 0.06 }, views, null);
+        Check("a 100 x 20 x 60 plate fits A at 1:1", plate.Num == 1 && plate.Den == 1 && plate.Fits, $"{plate.Num}:{plate.Den}");
+        Check("projected views line up", Math.Abs(plate.Centers["front"].x - plate.Centers["top"].x) < 1e-12 &&
+            Math.Abs(plate.Centers["front"].y - plate.Centers["right"].y) < 1e-12, "");
+        Check("top view is above front in third angle", plate.Centers["top"].y > plate.Centers["front"].y, "");
+        var big = SheetLayout.Plan(0.2794, 0.2159, false, new[] { 2.0, 0.5, 1.0 }, views, null);
+        Check("a 2 m model goes to 1:20", big.Num == 1 && big.Den == 20 && big.Fits, $"{big.Num}:{big.Den}");
+        var forced = SheetLayout.Plan(0.2794, 0.2159, false, new[] { 2.0, 0.5, 1.0 }, views, (1, 1));
+        Check("a forced scale that cannot fit says so", !forced.Fits, "");
+        var row = SheetLayout.Cells(false, new List<string> { "isometric", "top" });
+        Check("without a front view, views go in a row", row["isometric"] == (0, 0) && row["top"] == (1, 0), "");
     }
 
     static void Denied(Bridge b, string path)

@@ -1,26 +1,34 @@
 # dsh-solidworks
 
-> SOLIDWORKS for DeepSeek Harness (dsh). A dsh plugin plus a Windows bridge (swbridge.exe) that lets the agent read, edit in memory, rebuild, render and export the models in a running SOLIDWORKS 2016 or later, on the same PC or in a Windows VM. Read-only by default; the Windows side enforces what may be written.
+> SOLIDWORKS for DeepSeek Harness (dsh). A dsh plugin plus a Windows bridge (swbridge.exe) that lets the agent model parts (sketch, extrude, cut, revolve, fillet, chamfer, shell), assemble them with mates, check interference, count a BOM, make dimensioned drawings, and read, edit in memory, rebuild, render and export the models in a running SOLIDWORKS 2016 or later, on the same PC or in a Windows VM. Source files are read-only by default; the Windows side enforces what may be written.
 
 Install: `dsh plugin --profile web add @dshworks/dsh-solidworks`. Same Windows PC: nothing else. dsh on a Mac with SOLIDWORKS in a Parallels VM: start dsh once, then in the VM run `\\Mac\Home\.dsh\dsh-solidworks\windows\pair.cmd`.
 
 ## Tools
 
-Units: mm, degrees, kg everywhere; field names carry the unit. `doc` = path, file name or title of an open document; default the active one. Call `sw_status` first.
+Units: mm, degrees, kg everywhere; field names carry the unit. Geometry: model-space points [x, y, z] in mm, Y up; front plane z = 0, top y = 0, right x = 0; faces and edges are picked by a point on them. `doc` = path, file name or title of an open document; default the active one. Call `sw_status` first.
 
 - sw_status(pid?): release, instances, open documents, dialogs SOLIDWORKS waits on
 - sw_open(path, read_only=true, configuration?): .sldprt/.sldasm/.slddrw only
+- sw_new(type=part|assembly, template?): a new empty document; it has no file until sw_save with a path
 - sw_inspect(doc?): type, units, configurations, material, custom properties, box_mm, counts
 - sw_features(doc?, offset=0, limit=200, include_folders=false)
 - sw_parameters(doc?, filter?, limit=500): dimensions (D1@Sketch1, value, unit, driven) and equations (global variables marked)
 - sw_components(doc?, depth=1, limit=500): assemblies only
 - sw_mass_properties(doc?): mass_kg, volume_mm3, surface_area_mm2, density_kg_m3, center_of_mass_mm
+- sw_probe(doc?, at?[[x,y,z]...]): the face/edge/vertex at each point (surface or curve, area_mm2 or length_mm, normal or axis, diameter_mm, feature); without at, the user's current selection; two entities add distance_mm and angle_deg
 - sw_edit(doc?, configuration?, suppress?, unsuppress?, variables?{name: expr}, dimensions?{name: number}, dimension_scope=this|all, properties?{name: text}, property_scope=file|configuration, rebuild=true): in memory; returns each change with before/after/ok and the rebuild result
+- sw_build(doc?, steps[{op: sketch|extrude|revolve|fillet|chamfer|shell|plane|delete, ...}], atomic=true): models a part. sketch(on=front|top|right|plane name, or face_at, entities[line|centerline|polyline|rectangle|circle|arc]); extrude(depth, end=blind|through_all|through_all_both|mid_plane, cut, reverse, draft, merge); revolve(angle=360, cut; the sketch needs one centerline); fillet(radius, edges_at|faces_at); chamfer(distance, angle=45, edges_at|faces_at); shell(thickness, faces_at, outward); plane(on, offset); delete(features made by sw_build this session). Returns features with their dimensions, model.volume_mm3 and model.box_mm; a failing step rolls back the call when atomic
+- sw_study(doc?, variants[{label?, dimensions?{}, variables?{}}]): up to 50 variants, each from the original values, rebuilt and measured; restores every value and reports restored
 - sw_rebuild(doc?, force=true): ok=false when any feature fails
+- sw_assemble(doc?, steps[{op: insert|mate|fix|float, ...}]): insert(path, configuration?, at=[0,0,0] for the origin, fixed); mate(type=coincident|concentric|parallel|perpendicular|tangent|distance|angle, a, b, distance?, angle?, align=closest, flip); a reference is {component?, plane} or {at, kind=face|edge|vertex}
+- sw_interference(doc?, touching=false, limit=100): overlapping component pairs with volume_mm3, largest first
+- sw_bom(doc?, mode=parts|top, properties?, csv?, overwrite=false, limit=1000): items with file, configuration, quantity, properties; csv also writes a file (fetched like an export)
+- sw_drawing(doc?, views=[front, top, right, isometric], scale?, projection?=first|third, dimensions=true, template?): a new drawing of a saved model; views in projection at the largest standard scale that fits
 - sw_export(doc?, path, overwrite=false, sheets=all|active): extension picks the format; bare names go to the bridge's output folder; returns path, bytes, sha256, and local_copy when fetched into the dsh workspace
-- sw_save(doc?): overwrite the source; SAVE_DISABLED unless the bridge runs with --allow-save
-- sw_close(doc?, discard=false): unsaved changes discarded only if this bridge made them
-- sw_view(doc?, view=isometric|trimetric|dimetric|front|back|left|right|top|bottom|current, width=960, height=720): PNG image
+- sw_save(doc?, path?, overwrite=false): with path, save as a new native file in an allowed folder (the document becomes it); without, overwrite the source, SAVE_DISABLED unless the bridge runs with --allow-save
+- sw_close(doc?, discard=false): unsaved changes discarded only if this bridge opened or made the document
+- sw_view(doc?, view=isometric|trimetric|dimetric|front|back|left|right|top|bottom|current, views?[up to 6], display?=shaded_edges|shaded|wireframe|hidden_removed|hidden_grey, width=960, height=720): PNG image; several views come as one labelled contact sheet
 
 ## Errors
 
@@ -32,7 +40,10 @@ A failed call returns "CODE: sentence". Codes: BAD_REQUEST, SW_NOT_RUNNING, SW_B
 
 ## Facts that are easy to get wrong
 
-- A successful sw_edit can leave features failing: read `rebuild.ok` and `rebuild.problems`.
+- A successful sw_edit or sw_build can leave features failing: read `rebuild.ok` and `rebuild.problems`. Check sw_build's `model.volume_mm3` and `model.box_mm` against the geometry you meant.
+- Pick points must lie on the entity (within 0.5 mm): the middle of an edge, a point inside a face. Inside a hole there is no face. Components move when mated; use their new positions.
+- A cut goes into the material by default; an extrude goes out of the face or along the plane's normal. Use reverse to flip either.
+- Parts need a file (sw_save with a path) before sw_assemble can insert them or sw_drawing can draw them.
 - Files open only in the SOLIDWORKS release that saved them or a later one.
 - sw_status lists documents with a window; parts an assembly loaded are counted in `loaded_without_window`.
 - The bridge never starts SOLIDWORKS. A second SOLIDWORKS session on one machine stops at startup on "A journal file could not be created" until someone clicks OK.

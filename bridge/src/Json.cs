@@ -100,8 +100,14 @@ static class Json
     public static bool Bool(Dictionary<string, object> args, string key, bool fallback) =>
         args != null && args.TryGetValue(key, out var v) && v is bool b ? b : fallback;
 
-    public static int Int(Dictionary<string, object> args, string key, int fallback) =>
-        args != null && args.TryGetValue(key, out var v) && v != null ? Convert.ToInt32(v, CultureInfo.InvariantCulture) : fallback;
+    /// An integer argument; numbers beyond int's range are clamped (every caller clamps to a
+    /// sane range anyway), anything else is BAD_REQUEST rather than a crash.
+    public static int Int(Dictionary<string, object> args, string key, int fallback)
+    {
+        if (args == null || !args.TryGetValue(key, out var v) || v == null) return fallback;
+        var n = Num(v) ?? throw new BridgeException("BAD_REQUEST", $"{key} must be a number");
+        return n >= int.MaxValue ? int.MaxValue : n <= int.MinValue ? int.MinValue : (int)Math.Round(n);
+    }
 
     public static double? Num(object v) => v switch
     {
@@ -110,12 +116,67 @@ static class Json
         long l => l,
         decimal m => (double)m,
         double d => d,
-        string s when double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var p) => p,
+        string s when double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var p) && !double.IsNaN(p) && !double.IsInfinity(p) => p,
         _ => null,
     };
 
     public static Dictionary<string, object> Map(Dictionary<string, object> args, string key) =>
         args != null && args.TryGetValue(key, out var v) ? v as Dictionary<string, object> : null;
+
+    /// An array of objects, e.g. sw_build's steps. Anything that is not an object is refused,
+    /// so a malformed step fails loudly instead of being skipped.
+    public static List<Dictionary<string, object>> Records(Dictionary<string, object> args, string key)
+    {
+        var r = new List<Dictionary<string, object>>();
+        if (args == null || !args.TryGetValue(key, out var v) || v == null) return r;
+        if (!(v is IEnumerable e) || v is string || v is IDictionary) throw new BridgeException("BAD_REQUEST", $"{key} must be an array of objects");
+        var i = 0;
+        foreach (var x in e)
+        {
+            i++;
+            r.Add(x as Dictionary<string, object> ?? throw new BridgeException("BAD_REQUEST", $"{key}[{i}] must be an object"));
+        }
+        return r;
+    }
+
+    /// A number argument that must be present.
+    public static double Need(Dictionary<string, object> args, string key, string what)
+    {
+        var v = args != null && args.TryGetValue(key, out var raw) ? Num(raw) : null;
+        return v ?? throw new BridgeException("BAD_REQUEST", $"{what} needs {key} (a number)");
+    }
+
+    public static double? Opt(Dictionary<string, object> args, string key) =>
+        args != null && args.TryGetValue(key, out var raw) ? Num(raw) : null;
+
+    /// [x, y, z] in millimetres, as given; null when absent.
+    public static double[] Triple(object v, string what)
+    {
+        if (v == null) return null;
+        if (v is IEnumerable e && !(v is string))
+        {
+            var r = new List<double>();
+            foreach (var x in e) r.Add(Num(x) ?? double.NaN);
+            if (r.Count == 3 && !r.Exists(double.IsNaN)) return r.ToArray();
+        }
+        throw new BridgeException("BAD_REQUEST", $"{what} must be [x, y, z] in mm");
+    }
+
+    public static double[] Triple(Dictionary<string, object> args, string key, string what) =>
+        Triple(args != null && args.TryGetValue(key, out var v) ? v : null, what);
+
+    /// A list of [x, y, z] points; a single point is accepted as a list of one.
+    public static List<double[]> Triples(Dictionary<string, object> args, string key, string what)
+    {
+        var r = new List<double[]>();
+        if (args == null || !args.TryGetValue(key, out var v) || v == null) return r;
+        if (!(v is IEnumerable e) || v is string) throw new BridgeException("BAD_REQUEST", $"{what}: {key} must be a list of [x, y, z] points in mm");
+        var items = new List<object>();
+        foreach (var x in e) items.Add(x);
+        if (items.Count == 3 && items.TrueForAll(x => Num(x) != null)) { r.Add(Triple(v, $"{what}: {key}")); return r; }
+        foreach (var x in items) r.Add(Triple(x, $"{what}: each of {key}"));
+        return r;
+    }
 
     public static List<string> List(Dictionary<string, object> args, string key)
     {
