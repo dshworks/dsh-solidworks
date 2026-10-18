@@ -23,8 +23,14 @@ static class Docs
         }
         var want = name.Trim();
         var docs = Objects(Call(app, "GetDocuments"));
+        object loose = null;
         foreach (var d in docs)
-            if (Matches(d, want)) return d;
+        {
+            var m = Match(Str(Call(d, "GetPathName")) ?? "", Str(Call(d, "GetTitle")) ?? "", Type(d), want);
+            if (m == 2) return d;
+            if (m == 1 && loose == null) loose = d;
+        }
+        if (loose != null) return loose;
 
         var open = new List<string>();
         foreach (var d in docs)
@@ -37,17 +43,26 @@ static class Docs
             $"\"{want}\" is not open in SOLIDWORKS; open it with sw_open first. Open: {(open.Count == 0 ? "none" : string.Join(", ", open))}");
     }
 
-    static bool Matches(object doc, string want)
+    /// How well a document answers to a name: 2 exactly (its path, file name or title), 1 loosely
+    /// (the same name without extension, since titles follow Explorer's "hide extensions"), 0 not.
+    /// A name with a SOLIDWORKS extension only ever matches a document of that type: flange.slddrw
+    /// is never the part flange.sldprt (measured: an export of "flange.slddrw" wrote the part).
+    public static int Match(string path, string title, int type, string want)
     {
-        var path = Str(Call(doc, "GetPathName")) ?? "";
-        var title = Str(Call(doc, "GetTitle")) ?? "";
-        if (Same(path, want) || Same(title, want)) return true;
-        if (path.Length > 0)
+        if (Same(path, want) || Same(title, want)) return 2;
+        if (path.Length > 0 && Same(Path.GetFileName(path), want)) return 2;
+        var wantType = Path.GetExtension(want).ToLowerInvariant() switch
         {
-            var file = Path.GetFileName(path);
-            if (Same(file, want) || Same(Path.GetFileNameWithoutExtension(path), want)) return true;
-        }
-        return Same(Path.GetFileNameWithoutExtension(title), Path.GetFileNameWithoutExtension(want));
+            ".sldprt" => K.DocPart, ".sldasm" => K.DocAssembly, ".slddrw" => K.DocDrawing, _ => 0,
+        };
+        if (wantType != 0 && wantType != type) return 0;
+        var stem = wantType != 0 ? Path.GetFileNameWithoutExtension(want) : want;
+        if (path.Length > 0 && Same(Path.GetFileNameWithoutExtension(path), stem)) return 1;
+        // A drawing's title carries its sheet: "flange - Sheet1".
+        var bare = Path.GetFileNameWithoutExtension(title);
+        var sheet = type == K.DocDrawing ? title.LastIndexOf(" - ", StringComparison.Ordinal) : -1;
+        if (sheet > 0 && Same(title.Substring(0, sheet), stem)) return 1;
+        return Same(bare, stem) || Same(title, stem) ? 1 : 0;
     }
 
     static bool Same(string a, string b) => a.Length > 0 && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

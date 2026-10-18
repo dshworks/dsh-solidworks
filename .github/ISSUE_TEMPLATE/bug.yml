@@ -1,0 +1,33 @@
+name: Bug report
+description: Something the tools did wrong, or could not do
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you asked dsh, what it called, and what came back. The tool's error text ("CODE: sentence") helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: swbridge status
+      description: On the Windows PC, run `%LOCALAPPDATA%\dsh-solidworks\swbridge.exe status` (or the bundled bin\swbridge.exe status) and paste the output.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: dsh and plugin versions
+      description: "`dsh --version` and the plugin version, e.g. dsh 0.2.0-rc.2, @dshworks/dsh-solidworks 0.2.1"
+  - type: dropdown
+    id: setup
+    attributes:
+      label: Setup
+      options:
+        - dsh and SOLIDWORKS on the same Windows PC
+        - dsh on a Mac, SOLIDWORKS in a Windows VM
+        - dsh and SOLIDWORKS on different machines
+        - another MCP client (swbridge.exe mcp)

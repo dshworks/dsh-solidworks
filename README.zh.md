@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-<a href="#一次会话">一次会话</a> ·
+<a href="#看它工作">看它工作</a> ·
 <a href="#开始使用">开始使用</a> ·
 <a href="#工具">工具</a> ·
 <a href="#它不会做什么">它不会做什么</a> ·
@@ -35,41 +35,45 @@
 
 ---
 
-你向 dsh 要一个零件，它就在你的 SOLIDWORKS 里把它建出来：草图、拉伸、旋转、打孔、圆角、倒角、抽壳。
-它会拿结果和它本想做出的几何对照、渲染出来看一眼，用配合把零件装起来、检查干涉、汇总成物料清单，
-再出一张带尺寸的工程图。它同样能处理你已有的文件：以只读方式打开，直接从模型本身作答，在内存中试新数值，
-把 STEP、PDF 或原生格式的副本写回你的项目。除非你主动开启，磁盘上的文件不会被改动。
-
-## 一次会话
-
-一次真实运行（dsh 0.2.0-rc.2、`deepseek-flash`，SOLIDWORKS 2019 SP0 跑在 Parallels 虚拟机里，
-dsh 在链路另一端）。提示词（原文为英文）：
-
-> 新建一个零件：一块 100 x 60 x 20 mm 的板，平放在上视基准面上、以原点为中心，中心有一个 20 mm 的通孔，
-> 四条竖直棱边倒 5 mm 圆角。检查它的体积是否等于这个几何应有的值。在一张图里从四个方向展示它，并说说你看到了什么。
-> 保存为 plate.sldprt，出一张工程图并导出为 plate.pdf。最后关闭你建的所有东西。
-
-dsh 依次调用了 `sw_status`、`sw_new`、`sw_build`（一次调用完成草图、两侧对称拉伸、打孔，并用棱边上的点选中四条边倒圆角）、
-`sw_view`（四个视图拼在一张图上）、`sw_save`、`sw_drawing`、`sw_view`（看工程图）、`sw_export`、两次 `sw_close` 和 `sw_status`。
-共 11 次调用，全部完成。它的回答节选（原文为英文）：
-
-> **体积：** 工具返回 **113287.61102 mm³**。按几何核对：100×60×20 = 120000；减去 ⌀20 通孔 π·10²·20 = 6283.185；
-> 减去四个 5 mm 圆角 4·(25 − π·25/4)·20 = 429.204 → 应为 **113287.611 mm³**。完全一致。
->
-> **上视：** 100 × 60 的轮廓，四角倒圆，⌀20 的孔正在中心。**前视：** 一个 100 × 20 的矩形；从这个方向看，竖直的孔在内部，
-> 所以没有孔的轮廓。
->
-> **工程图：** 第三角投影，比例 1:1，图纸 279.4 × 215.9 mm；前视、上视、右视和等轴测四个视图；导入 2 个尺寸
-> （图纸上显示 R5 和 20.00）。**PDF：** 本地副本 `solidworks/plate.pdf`。**已关闭：** 工程图（未保存的修改已丢弃）和
-> `plate.sldprt`；documents: []。
-
 <p align="center">
-<img src="docs/images/plate-views.png" width="49%" alt="sw_view：板的前视、上视、右视和等轴测拼在一张图上">
-<img src="docs/images/plate-drawing.png" width="49%" alt="sw_drawing 导出的 PDF：1:1 第三角投影视图和模型尺寸">
+<img src="docs/media/flange.gif" width="100%" alt="dsh 根据一段话在 SOLIDWORKS 2019 里建出管法兰：圆盘、轮毂、中心孔、六个螺栓孔、圆角，再核对体积并从四个方向查看">
 </p>
 
-体积是模型用自己的算术核对的，而不是相信工具。它对每个视图的描述来自那张图片：工具返回的任何数字都没说前视图里看不到孔。
-PDF 已落到 dsh 的工作区，并与 bridge 报告的 SHA-256 校验一致。
+**一段话进去，一个法兰出来。** 你描述零件，dsh 就在你桌面上的 SOLIDWORKS 里把它建出来，用它自己的算术核对体积
+（两边都是 158,983.493 mm³），再从四个方向看一遍。它还能把零件装起来、检查干涉、汇总物料清单、出工程图，
+也能处理你已有的文件：除非你同意，一律只读。
+
+## 看它工作
+
+每个片段都是一次真实会话：dsh 0.2.0-rc.2 加 `deepseek-flash`，SOLIDWORKS 2019 SP0 跑在 Parallels 虚拟机里，
+画面录自 SOLIDWORKS 窗口。字幕是这次会话自己的工具调用和结果，以及模型自己的结束语。模型思考的时间被快进，
+没有剪掉或调换任何内容。[片段是怎么做的](scripts/clips/README.md)。
+
+### 指给它看
+
+你在 SOLIDWORKS 里选中一个面，告诉它要做什么。dsh 读取你的选择（法兰的上表面，8 条边），把这些边全部倒 2 mm
+圆角，并解释为什么体积减少了 360.218 mm³，尽管其中一个圆角是在加材料。
+
+<p align="center"><img src="docs/media/select.gif" width="100%" alt="在 SOLIDWORKS 里选中的面变成蓝色；dsh 读取选择并把它的八条边倒圆角"></p>
+
+### 装起来，检查是否合得上
+
+建一根轴，两个零件都保存，再装配：轴穿过中心孔，法兰离轴端 40 mm。干涉：0 对。dsh 还把只是贴合的面也算了一遍，
+指出 30 mm 的轴配 30 mm 的孔是零间隙配合。最后给出物料清单。
+
+<p align="center"><img src="docs/media/assemble.gif" width="100%" alt="dsh 建出轴、保存两个零件、装配轴和法兰、检查干涉并列出 BOM"></p>
+
+### 出图
+
+工程图按投影关系布置视图，取能放进图纸的最大标准比例，导入模型尺寸，并以 PDF 的形式回到你的工作区。
+
+<p align="center"><img src="docs/media/drawing.gif" width="100%" alt="dsh 以 1:2 第三角投影为法兰出图并导出 PDF"></p>
+
+<p align="center">
+<img src="docs/images/flange-drawing.png" width="49%" alt="导出的 PDF：法兰的前视、上视、右视和等轴测视图，1:2，带尺寸">
+<img src="docs/images/flange-views.png" width="49%" alt="sw_view：法兰的前视、上视、右视和等轴测拼在一张图上">
+</p>
+<p align="center"><sub>左：导出的 PDF。右：<code>sw_view</code> 把四个视图拼在一张图上，dsh 就是这样看它做出来的东西。</sub></p>
 
 ## 开始使用
 
@@ -126,6 +130,9 @@ exe 在本包的 `bin/swbridge.exe`，每个 [GitHub release](https://github.com
 上视是 y = 0，右视是 x = 0。面和边用其上的一个点来选取。`doc` 是已打开文档的路径、文件名或标题，
 默认是当前活动文档。
 
+<details>
+<summary><b>全部 21 个工具</b></summary>
+
 | 工具 | 作用 |
 | --- | --- |
 | `sw_status` | 版本（2016 SP1、2019 SP0 ……）、所有 SOLIDWORKS 实例、已打开文档，以及 SOLIDWORKS 正在等待的对话框。首先调用。 |
@@ -150,6 +157,8 @@ exe 在本包的 `bin/swbridge.exe`，每个 [GitHub release](https://github.com
 | `sw_close` | 关闭文档；只有这个 bridge 自己做的未保存修改才会被丢弃。 |
 | `sw_view` | 渲染一张 PNG：一个标准视图，或最多六个视图拼在一张带标注的图上，着色、线框或消隐。之后恢复用户原来的视图。 |
 
+</details>
+
 ## 它不会做什么
 
 这些规则在 Windows 一侧、文件所在的地方执行。dsh 可以提出任何请求，最终由 bridge 决定。
@@ -173,6 +182,9 @@ HMAC-SHA256 证明自己持有令牌），但没有加密。它面向仅主机�
 请通过 SSH 或 VPN 传输。详见 [SECURITY.md](SECURITY.md)。
 
 ## 工作原理
+
+<details>
+<summary><b>逐条设计说明</b></summary>
 
 - **几何只有一个坐标空间。** 草图点、选取点、探测点、零部件原点和包围盒都是模型空间的毫米值。bridge 用草图
   自身的变换把每个草图点映射进去，所以面上的圆会出现在模型说的位置，不管 SOLIDWORKS 给那个面的草图取了什么轴。
@@ -200,20 +212,25 @@ HMAC-SHA256 证明自己持有令牌），但没有加密。它面向仅主机�
 - **一份契约。** `protocol/tools.json` 定义名称、参数结构、时间预算和错误码。bridge 内嵌它；插件用 dsh 自己的
   `createMcpToolDefinition` 从它构建 dsh 工具，所以参数校验、错误结果和图片准入与任何 MCP server 的行为一致。
 
+</details>
+
 ## 证据
 
 本页的每一条说法都在 2026-10-18 对真实 SOLIDWORKS 跑过。
 
 | 内容 | 结果 |
 | --- | --- |
-| 端到端实测，SOLIDWORKS 2016 SP1（24.1.0） | 64 项检查全部通过，经由真实的主动连出链路，用的就是发布的 exe |
-| 端到端实测，SOLIDWORKS 2019 SP0（27.0.0） | 64 项检查全部通过，同一个 exe |
-| 真实 dsh 0.2.0-rc.2 + `deepseek-flash`，dsh 在 Linux、SOLIDWORKS 2019 在虚拟机（listen） | 即上面那次会话：11 次工具调用全部完成；一句话建出零件、核对体积、导出并取回工程图 |
+| 端到端实测，SOLIDWORKS 2016 SP1（24.1.0） | 66 项检查全部通过，经由真实的主动连出链路，用的就是发布的 exe |
+| 端到端实测，SOLIDWORKS 2019 SP0（27.0.0） | 66 项检查全部通过，同一个 exe |
+| 真实 dsh 0.2.0-rc.2 + `deepseek-flash`，dsh 在 Linux、SOLIDWORKS 2019 在虚拟机（listen） | 即上面四个片段：分别 12、17、23 和 13 次工具调用；其中一次被拒绝（对零件要 BOM：`WRONG_DOC_TYPE`，模型随即改正），其余全部完成 |
 | 真实 dsh 0.2.0-rc.2 + `deepseek-flash`，dsh 就在那台 Windows PC 上（spawn） | 在 0.1.0 上跑过，此后未改动：插件通过 dsh 的子进程服务启动自带 bridge；5 次工具调用全部完成；dsh 退出后没有残留 bridge 进程 |
 | 发布的 `swbridge.exe` | CI 从源码重新构建，得到同一个 SHA-256（`bridge/swbridge.exe.sha256`） |
 | 用生成的 `pair.cmd` 配对、登录自启、`uninstall` | 在 0.1.0 上跑过，此后未改动：无需管理员即装好；互斥锁下只有一个实例；卸载后不留痕迹 |
 | 单元测试（Linux，无需 SOLIDWORKS） | 48，包括 2016 成员检查和双方契约检查 |
 | `swbridge selftest`（Windows，无需 SOLIDWORKS） | 路径、单位、JSON、工程图布局和比例、图片留边、CSV，以及与插件共用的 HMAC 测试向量 |
+
+<details>
+<summary><b>实测检查的对照标准，以及各操作耗时</b></summary>
 
 端到端检查用工具没有自己声明过的东西来检验每个回答。建模类检查的标准答案都由所要求的几何算出：上面那块板必须是
 6000·20 − π·10²·20 − 4·25·(1 − π/4)·20 mm³，顶面面积是它除以 20；50 mm 立方体抽壳 2 mm、一面开口必须是
@@ -221,15 +238,19 @@ HMAC-SHA256 证明自己持有令牌），但没有加密。它面向仅主机�
 设计研究取 10 mm 和 40 mm 时必须是顶面面积乘以 10 和 40，结束后板厚回到 20；两块面对面配合的板不能干涉，第三块压进
 两者各 10 mm 时，与每块的重叠必须正好是顶面面积乘以 10；BOM 必须数出 3 件；工程图必须有四个与图纸比例一致的视图，
 并能导出为 `%PDF-`。归属类检查基于一个不是 bridge 建的草图（保存、关闭再打开，bridge 已不记得它）：在它上面建模失败、
-以及删除在它上面建的特征，都必须让这个草图保留；第二个图元就失败的草图必须让特征树保持原样。0.1.0 的读取类检查也照常运行：样例 `box.sldprt` 在 `sw_edit` 把深度改成 150 mm 后必须是
+以及删除在它上面建的特征，都必须让这个草图保留；第二个图元就失败的草图必须让特征树保持原样。画在实体下方基准面上的给定深度切除必须自动反向，并正好去掉 π·5²·4 mm³；
+和零件同名保存的工程图，用它的 `.slddrw` 名字导出的必须是工程图本身。0.1.0 的读取类检查也照常运行：样例 `box.sldprt` 在 `sw_edit` 把深度改成 150 mm 后必须是
 325,500 mm³，取回的 STEP 必须与 bridge 的 SHA-256 一致，各种拒绝必须返回对应的错误码。2016 上的那次运行用的是一个
 别人开着 58 个文档的装配体的 SOLIDWORKS；有一项检查确认他们的文档、修改标记、活动文档，以及他们装配体加载的 57 个零件都原样恢复。
 
-经由链路在最后两次运行中实测，SOLIDWORKS 在 Windows 11 ARM64 上以 x64 仿真运行，虚拟机当时也在跑别的工作
-（更早的运行最多快一倍）：五步建板 4.2-6.8 s，一次探测 0.5-1.6 s，四视图拼图 2.7-4.5 s，出一张工程图
-3.4-4.2 s，四零件装配体干涉检查 1.5-3.0 s，打开零件 1.8-2.3 s，导出 STEP 0.5-0.7 s。
+经由链路在 0.2.1 的实测中测得，SOLIDWORKS 在 Windows 11 ARM64 上以 x64 仿真运行（较慢的一端是同时开着那个 58 个文档
+装配体的 2016）：五步建板 3.2-4.3 s，一次探测 0.3-0.9 s，四视图拼图 2.5-3.4 s，出一张工程图 1.9-3.9 s，三零件装配体
+干涉检查 1.1-3.2 s，打开零件 1.3-1.5 s，导出 STEP 0.4-0.5 s。
 
-尚未验证：SOLIDWORKS 2020 及以后、Windows 10、x64 实机。欢迎反馈，先贴 `swbridge status` 的输出。
+</details>
+
+尚未验证：SOLIDWORKS 2020 及以后、Windows 10、x64 实机。欢迎反馈：[提一个 issue](https://github.com/dshworks/dsh-solidworks/issues/new/choose)，
+并贴上 `swbridge status` 的输出。
 
 ## 何时不适合用
 
@@ -249,4 +270,5 @@ npm run build:bridge                 # 需要 .NET 8 SDK；为 net48 构建 bin/
 SW_LINK_TOKEN=... node tests/live/e2e.mjs   # 对一个连向本机的 bridge 做实测
 ```
 
-`node scripts/format-contract.mjs` 让 `protocol/tools.json` 保持既定排版。MIT 许可，见 [LICENSE](LICENSE)。
+[CONTRIBUTING.md](CONTRIBUTING.md) 有其余说明，包括如何对你自己的 SOLIDWORKS 跑实测。`node scripts/format-contract.mjs`
+让 `protocol/tools.json` 保持既定排版。MIT 许可，见 [LICENSE](LICENSE)。

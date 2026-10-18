@@ -251,6 +251,18 @@ const taken = await call('sw_build', { doc: userFile, steps: [{ op: 'sketch', on
 check('build: a name already in the part is refused before anything is made', errorCode(taken) === 'BAD_REQUEST' && facts(await call('sw_features', { doc: userFile })).features?.map((f) => f.name).join() === userTree, errorCode(taken))
 await call('sw_close', { doc: userFile, discard: true })
 
+// A cut sketched on a plane at the body's boundary points away from the material; with no
+// direction given it is made the other way, and says so.
+const block = await fresh('part')
+const blind = facts(await call('sw_build', { doc: block.title, steps: [
+  { op: 'sketch', on: 'top', entities: [{ type: 'rectangle', corner: [-20, 0, -20], opposite: [20, 0, 20] }] },
+  { op: 'extrude', depth: 10 },
+  { op: 'sketch', on: 'top', entities: [{ type: 'circle', center: [0, 0, 0], diameter: 10 }] },
+  { op: 'extrude', cut: true, depth: 4 },
+] }))
+check('build: a cut that pointed away from the body is reversed', blind.steps?.[3]?.reversed === true && near(blind.model?.volume_mm3, 40 * 40 * 10 - Math.PI * 25 * 4),
+  JSON.stringify({ step: blind.steps?.[3], v: blind.model?.volume_mm3 }))
+
 const cup = await fresh('part')
 const cupBuilt = facts(await call('sw_build', { doc: cup.title, steps: [
   { op: 'sketch', on: 'front', entities: [{ type: 'rectangle', corner: [-25, -25, 0], opposite: [25, 25, 0] }] },
@@ -297,7 +309,11 @@ const drawing = facts(await call('sw_drawing', { doc: plateFile }))
 if (drawing.doc?.title) made.push(drawing.doc.title)
 check('drawing: four views at the sheet scale, dimensions in', drawing.views?.length === 4 && drawing.views.every((v) => v.scale === drawing.sheet?.scale) && drawing.dimensions_imported >= 2,
   JSON.stringify({ sheet: drawing.sheet, views: drawing.views?.map((v) => `${v.orientation}@${v.scale}`), dims: drawing.dimensions_imported }))
-const drawingPdf = await call('sw_export', { doc: drawing.doc?.title, path: `e2e-drawing-${stamp}.pdf` })
+// Saved next to its part under the same name, the drawing must be the one "<name>.slddrw" means.
+const drawingFile = facts(await call('sw_save', { doc: drawing.doc?.title, path: `e2e-plate-${stamp}.slddrw` }))
+made[made.indexOf(drawing.doc?.title)] = drawingFile.doc?.title
+const drawingPdf = await call('sw_export', { doc: `e2e-plate-${stamp}.slddrw`, path: `e2e-drawing-${stamp}.pdf` })
+check('export: a drawing named by its file is the drawing, not its part', facts(drawingPdf).doc === `e2e-plate-${stamp}.slddrw`, facts(drawingPdf).doc)
 const drawingPdfLocal = facts(await fetchExport(client, drawingPdf, mkdtempSync(join(tmpdir(), 'swe2e-')), 'out'))
 check('drawing: exports to PDF', (drawingPdfLocal.local_copy ? readFileSync(drawingPdfLocal.local_copy).subarray(0, 5).toString('latin1') : '') === '%PDF-', drawingPdfLocal.local_copy ?? drawingPdfLocal.local_copy_error)
 

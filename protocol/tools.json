@@ -196,7 +196,7 @@
       "name": "sw_build",
       "write": true,
       "budget_s": 600,
-      "description": "Model a part: run steps in order on a part, e.g. sketch a profile, extrude it, cut a hole, fillet the edges. Every coordinate is a model-space point [x, y, z] in mm, the space sw_probe and box_mm use: Y is up, the front plane is z = 0, top is y = 0, right is x = 0. Sketch points off the sketch plane are projected onto it. Faces and edges are picked by a point on them. With atomic (default) a failing step removes what this call made. Returns every feature made with its dimensions, which sw_edit can change later, and the part's volume and bounding box: compare them with what you meant to make.",
+      "description": "Model a part: run steps in order on a part, e.g. sketch a profile, extrude it, cut a hole, fillet the edges. Every coordinate is a model-space point [x, y, z] in mm, the space sw_probe and box_mm use: Y is up, the front plane is z = 0, top is y = 0, right is x = 0. So a 12 mm plate on the top plane has its top face at y = 12, and a hole in its middle is centred at [0, 12, 0]. Sketch points off the sketch plane are projected onto it. Faces and edges are picked by a point on them. With atomic (default) a failing step removes what this call made. Returns every feature made with its dimensions, which sw_edit can change later, and the part's volume and bounding box: compare them with what you meant to make.",
       "input": {
         "type": "object",
         "properties": {
@@ -264,7 +264,7 @@
                 "cut": { "type": "boolean", "description": "extrude, revolve: remove material instead of adding it." },
                 "reverse": {
                   "type": "boolean",
-                  "description": "extrude, revolve: go the other way. An extrude goes along the sketch normal (out of a face it was sketched on); a cut goes into the material."
+                  "description": "extrude, revolve: go the other way. An extrude goes along the sketch normal (out of a face it was sketched on). A cut that would remove nothing that way is made the other way, and the step says reversed."
                 },
                 "draft": { "type": "number", "description": "extrude: draft angle in degrees; negative drafts outward." },
                 "merge": { "type": "boolean", "description": "extrude: join the existing body. Default true." },

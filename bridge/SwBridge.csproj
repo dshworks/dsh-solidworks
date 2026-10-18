@@ -22,7 +22,7 @@
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Product>dsh-solidworks bridge</Product>
     <Company>dshworks</Company>
     <Copyright>MIT License</Copyright>

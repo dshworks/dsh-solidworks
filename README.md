@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-<a href="#a-session">A session</a> ·
+<a href="#watch-it">Watch it</a> ·
 <a href="#get-started">Get started</a> ·
 <a href="#tools">Tools</a> ·
 <a href="#what-it-will-not-do">What it will not do</a> ·
@@ -37,56 +37,56 @@
 
 ---
 
-You ask dsh for a part, and it models it in your SOLIDWORKS: sketches,
-extrudes, revolves, holes, fillets, chamfers, shells. It checks the result
-against the geometry it meant to make, looks at it, puts parts together with
-mates, checks them for collisions, counts them into a bill of materials, and
-makes a dimensioned drawing. It also works on the files you already have: it
-opens them read-only, answers from the model itself, tries new values in memory,
-and writes STEP, PDF or native copies back into your project. Your files on disk
-do not change unless you turn that on.
-
-## A session
-
-A real run (dsh 0.2.0-rc.2, `deepseek-flash`, SOLIDWORKS 2019 SP0 in a
-Parallels VM, dsh on the other side of the link). The prompt:
-
-> Make a new part: a 100 x 60 x 20 mm plate lying flat on the top plane,
-> centred on the origin, with a 20 mm hole through its centre and its four
-> vertical edges rounded at 5 mm. Check that its volume is what that geometry
-> should give. Show it from four sides in one picture and say what you see.
-> Save it as plate.sldprt, make a drawing of it and export the drawing as
-> plate.pdf. Then close everything you made.
-
-dsh called `sw_status`, `sw_new`, `sw_build` (one call: the sketch, a mid-plane
-extrude, the hole, and the fillets on four edges it picked by points on them),
-`sw_view` (four views on one picture), `sw_save`, `sw_drawing`, `sw_view` (the
-drawing), `sw_export`, `sw_close` twice and `sw_status`. Eleven calls, all
-completed. From its answer:
-
-> **Volume:** tool returned **113287.61102 mm³**. Checked against the geometry:
-> 100×60×20 = 120000; minus ⌀20 through hole π·10²·20 = 6283.185; minus four
-> 5 mm corner rounds, 4·(25 − π·25/4)·20 = 429.204 → expected **113287.611
-> mm³**. Exact match.
->
-> **Top:** 100 × 60 outline with all four corners rounded and the ⌀20 hole dead
-> centre. **Front:** plain 100 × 20 rectangle; the vertical hole is internal
-> from this direction, so no hole outline.
->
-> **Drawing:** third angle, scale 1:1, sheet 279.4 × 215.9 mm; front, top,
-> right and isometric views; 2 dimensions imported (R5 and 20.00 shown on the
-> sheet). **PDF:** local copy `solidworks/plate.pdf`. **Closed:** the drawing
-> (unsaved changes discarded) and `plate.sldprt`; documents: [].
-
 <p align="center">
-<img src="docs/images/plate-views.png" width="49%" alt="sw_view: the plate from front, top, right and isometric on one picture">
-<img src="docs/images/plate-drawing.png" width="49%" alt="sw_drawing exported as PDF: third-angle views at 1:1 with the model's dimensions">
+<img src="docs/media/flange.gif" width="100%" alt="dsh models a pipe flange in SOLIDWORKS 2019 from one paragraph: disc, hub, bore, six bolt holes, a fillet; then checks the volume and looks from four sides">
 </p>
 
-The model checked the volume with its own arithmetic, not by trusting the
-tool. What it says about each view comes from the picture: no number the tools
-returned says the front view hides the hole. The PDF arrived in the dsh
-workspace, checked against the bridge's SHA-256.
+**One paragraph in, a flange out.** You describe the part; dsh models it in the
+SOLIDWORKS on your desk, checks the volume against its own arithmetic
+(158,983.493 mm³ both ways), and looks at it from four sides. It can also put
+parts together, check them for collisions, count a bill of materials, make the
+drawing, and work on the files you already have, read-only unless you say
+otherwise.
+
+## Watch it
+
+Every clip is a real session: dsh 0.2.0-rc.2 with `deepseek-flash`, SOLIDWORKS
+2019 SP0 in a Parallels VM, recorded from the SOLIDWORKS window. The captions
+are the session's own tool calls and results, and its own closing words. Time
+spent thinking is fast-forwarded; nothing is cut or reordered.
+[How the clips are made](scripts/clips/README.md).
+
+### Point at it
+
+You select a face in SOLIDWORKS and say what to do with it. dsh reads your
+selection (the flange's top face, 8 edges), rounds every edge of it at 2 mm, and
+explains why the volume went down by 360.218 mm³ even though one fillet adds
+material.
+
+<p align="center"><img src="docs/media/select.gif" width="100%" alt="A face selected in SOLIDWORKS turns blue; dsh reads the selection and rounds its eight edges"></p>
+
+### Put parts together, check they fit
+
+A shaft is modeled, both parts saved, and assembled with the shaft through the
+bore and the flange 40 mm up. Interference: 0 pairs. dsh also counts faces that
+only touch, and points out that a 30 mm shaft in a 30 mm bore is a line-to-line
+fit. Then the bill of materials.
+
+<p align="center"><img src="docs/media/assemble.gif" width="100%" alt="dsh models a shaft, saves both parts, assembles shaft and flange, checks interference and lists the BOM"></p>
+
+### Draw it
+
+The drawing lays its views out in projection at the largest standard scale that
+fits, brings in the model's dimensions, and comes back to your workspace as a
+PDF.
+
+<p align="center"><img src="docs/media/drawing.gif" width="100%" alt="dsh makes a third-angle drawing of the flange at 1:2 and exports it as PDF"></p>
+
+<p align="center">
+<img src="docs/images/flange-drawing.png" width="49%" alt="The exported PDF: front, top, right and isometric views of the flange at 1:2 with dimensions">
+<img src="docs/images/flange-views.png" width="49%" alt="sw_view: the flange from front, top, right and isometric on one picture">
+</p>
+<p align="center"><sub>Left: the PDF as exported. Right: <code>sw_view</code>, four views on one picture, which is how dsh looks at what it made.</sub></p>
 
 ## Get started
 
@@ -150,6 +150,9 @@ the front plane at z = 0, top at y = 0, right at x = 0. Faces and edges are
 picked by a point on them. `doc` is a path, file name or title of an open
 document and defaults to the active one.
 
+<details>
+<summary><b>All 21 tools</b></summary>
+
 | Tool | What it does |
 | --- | --- |
 | `sw_status` | Release (2016 SP1, 2019 SP0, ...), every SOLIDWORKS instance, the open documents, and any dialog SOLIDWORKS is waiting on. Called first. |
@@ -173,6 +176,8 @@ document and defaults to the active one.
 | `sw_save` | Save as a new file in an allowed folder (how new documents get one), or over the source file if the bridge was started with `--allow-save`. |
 | `sw_close` | Close a document; unsaved changes are discarded only if this bridge made them. |
 | `sw_view` | A PNG of the model: one standard view or up to six on one labelled picture, shaded, wireframe or hidden-line. The user's view is put back afterwards. |
+
+</details>
 
 ## What it will not do
 
@@ -222,6 +227,9 @@ or a local one; across anything else, carry it through SSH or a VPN. See
               +----- one contract, both halves ----- +----------------------------------+
 ```
 
+<details>
+<summary><b>The design, point by point</b></summary>
+
 - **One space for geometry.** Sketch points, picks, probes, component origins
   and bounding boxes are all model-space millimetres. The bridge maps each
   sketch point through the sketch's own transform, so a circle on a face goes
@@ -264,20 +272,25 @@ or a local one; across anything else, carry it through SSH or a VPN. See
   dsh's own `createMcpToolDefinition`, so validation, error results and image
   admission behave as for any MCP server.
 
+</details>
+
 ## Proof
 
 Every claim on this page was run, against real SOLIDWORKS, on 2026-10-18.
 
 | What | Result |
 | --- | --- |
-| Live end-to-end, SOLIDWORKS 2016 SP1 (24.1.0) | 64 of 64 checks, through the real dial-out link, with the release exe |
-| Live end-to-end, SOLIDWORKS 2019 SP0 (27.0.0) | 64 of 64 checks, same exe |
-| Real dsh 0.2.0-rc.2 + `deepseek-flash`, dsh on Linux, SOLIDWORKS 2019 in a VM (listen) | the session above: 11 tool calls, 11 completed; a part modeled from a sentence, its volume checked, a drawing exported and fetched |
+| Live end-to-end, SOLIDWORKS 2016 SP1 (24.1.0) | 66 of 66 checks, through the real dial-out link, with the release exe |
+| Live end-to-end, SOLIDWORKS 2019 SP0 (27.0.0) | 66 of 66 checks, same exe |
+| Real dsh 0.2.0-rc.2 + `deepseek-flash`, dsh on Linux, SOLIDWORKS 2019 in a VM (listen) | the four clips above: 12, 17, 23 and 13 tool calls; one refused (a BOM asked of a part: `WRONG_DOC_TYPE`, which the model corrected), the rest completed |
 | Real dsh 0.2.0-rc.2 + `deepseek-flash`, dsh on the Windows PC itself (spawn) | run on 0.1.0, unchanged since: the plugin started its bundled bridge through dsh's subprocess service; 5 tool calls, 5 completed; no bridge left running after dsh exited |
 | The published `swbridge.exe` | rebuilt from source by CI to the same SHA-256 (`bridge/swbridge.exe.sha256`) |
 | Pairing from the generated `pair.cmd`, sign-in start, `uninstall` | run on 0.1.0, unchanged since: installed with no admin, one instance under the mutex, nothing left after uninstall |
 | Unit tests (Linux, no SOLIDWORKS) | 48, including the 2016 member check and both-sides contract checks |
 | `swbridge selftest` (Windows, no SOLIDWORKS) | paths, units, JSON, drawing layout and scale, picture letterboxing, CSV, HMAC vector shared with the plugin |
+
+<details>
+<summary><b>What the live checks compare against, and how long things take</b></summary>
 
 The end-to-end checks test each answer against something the tool did not say
 about itself. The modelling ones compute it from the geometry asked for: the
@@ -292,7 +305,10 @@ must have its four views at the sheet's scale and export as `%PDF-`. The
 ownership checks build on a sketch the bridge did not make (saved, closed and
 reopened, so it is forgotten): a failed build and a delete of what was built on
 it must leave that sketch in place, and a sketch that fails on its second
-entity must leave the feature tree exactly as it was. The
+entity must leave the feature tree exactly as it was. A blind cut sketched on
+a plane under the body must reverse itself and remove exactly π·5²·4 mm³, and a
+drawing saved next to its part must be the document its `.slddrw` name exports.
+The
 reading ones from 0.1.0 still run: the stock `box.sldprt` must reach 325,500
 mm³ after `sw_edit` sets its depth to 150 mm, the fetched STEP must hash to the
 bridge's SHA-256, the refusals must return their codes. On 2016 the run used a
@@ -300,14 +316,17 @@ SOLIDWORKS that someone else had a 58-document assembly open in; a check
 confirms their documents, dirty flags, active document and the 57 parts their
 assembly had loaded came back unchanged.
 
-Measured through the link in the two final runs, SOLIDWORKS under x64 emulation
-on Windows 11 ARM64, on VMs other work was using at the same time (earlier runs
-were up to twice as fast): the five-step plate build 4.2-6.8 s, a probe
-0.5-1.6 s, a four-view picture 2.7-4.5 s, a drawing 3.4-4.2 s, interference on
-a four-part assembly 1.5-3.0 s, open a part 1.8-2.3 s, export STEP 0.5-0.7 s.
+Measured through the link in the 0.2.1 runs, SOLIDWORKS under x64 emulation on
+Windows 11 ARM64 (the slower end is the 2016 SOLIDWORKS that also holds the
+58-document assembly): the five-step plate build 3.2-4.3 s, a probe 0.3-0.9 s, a
+four-view picture 2.5-3.4 s, a drawing 1.9-3.9 s, interference on a three-part
+assembly 1.1-3.2 s, open a part 1.3-1.5 s, export STEP 0.4-0.5 s.
+
+</details>
 
 Not verified yet: SOLIDWORKS 2020 and later, Windows 10, x64 hardware. Reports
-welcome; `swbridge status` is the first thing to paste.
+welcome: [open an issue](https://github.com/dshworks/dsh-solidworks/issues/new/choose)
+with `swbridge status` pasted in.
 
 ## When to skip it
 
@@ -327,6 +346,9 @@ welcome; `swbridge status` is the first thing to paste.
 
 ## Troubleshooting
 
+<details>
+<summary><b>Error messages and what they mean</b></summary>
+
 | You see | It means |
 | --- | --- |
 | `NOT_CONNECTED` | No bridge has paired with this dsh. Run `pair.cmd` in the VM; if it ran, check `%LOCALAPPDATA%\dsh-solidworks\bridge.log` there. |
@@ -336,8 +358,14 @@ welcome; `swbridge status` is the first thing to paste.
 | `DIRTY ... was not opened by this bridge process` on a document dsh made | The bridge restarted and no longer knows it made that document. Close it in SOLIDWORKS. |
 | `no face within 0.5 mm of [x, y, z]` | The point is not on the model where the call assumed; the message names the nearest face or edge and how far it is. Components move when mated: use where they are now. |
 | `another bridge holds the link` (in the bridge log) | A second machine is paired with the same dsh; the first one connected keeps it. |
+| `the bridge on ... does not have sw_...` | The Windows PC still runs the bridge it was paired with before the plugin was updated. Run `pair.cmd` there again. |
+
+</details>
 
 ## Configuration
+
+<details>
+<summary><b>Plugin and bridge options</b></summary>
 
 The plugin row, `id: dsh-solidworks`:
 
@@ -353,6 +381,8 @@ The plugin row, `id: dsh-solidworks`:
 
 The bridge, `swbridge.exe`: `mcp`, `connect`, `status`, `uninstall`, with
 `--out`, `--allow-write`, `--allow-save`, `--pid`. `swbridge help` has the rest.
+
+</details>
 
 ## Prior art
 
@@ -382,6 +412,7 @@ npm run build:bridge                 # .NET 8 SDK; builds bin/swbridge.exe for n
 SW_LINK_TOKEN=... node tests/live/e2e.mjs   # live run against a bridge that dials this machine
 ```
 
-`bridge/compat/README.md` explains how `sw2016.tsv` is regenerated from an
-installed interop. `node scripts/format-contract.mjs` keeps
+[CONTRIBUTING.md](CONTRIBUTING.md) has the rest, including how to run the live
+checks against your own SOLIDWORKS. `bridge/compat/README.md` explains how
+`sw2016.tsv` is regenerated from an installed interop. `node scripts/format-contract.mjs` keeps
 `protocol/tools.json` in its layout. MIT, see [LICENSE](LICENSE).
