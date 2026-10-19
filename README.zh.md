@@ -224,6 +224,7 @@ HMAC-SHA256 证明自己持有令牌），但没有加密。它面向仅主机�
 | 端到端实测，SOLIDWORKS 2019 SP0（27.0.0） | 66 项检查全部通过，同一个 exe |
 | 真实 dsh 0.2.0-rc.2 + `deepseek-flash`，dsh 在 Linux、SOLIDWORKS 2019 在虚拟机（listen） | 即上面四个片段：分别 12、17、23 和 13 次工具调用；其中一次被拒绝（对零件要 BOM：`WRONG_DOC_TYPE`，模型随即改正），其余全部完成 |
 | 真实 dsh 0.2.0-rc.2 + `deepseek-flash`，dsh 就在那台 Windows PC 上（spawn） | 在 0.1.0 上跑过，此后未改动：插件通过 dsh 的子进程服务启动自带 bridge；5 次工具调用全部完成；dsh 退出后没有残留 bridge 进程 |
+| 在 dsh 0.2.1-rc.2（2026-10-19 起是 npm 的 `latest`）上执行 `dsh plugin add` | 发布的包能装进一个全新的 profile，且不带任何 dsh 自己提供的包的副本；[`dsh-release-watch`](.github/workflows/dsh-release-watch.yml) 每天重跑一次，dsh 新版本拒绝它时会开 issue。只验证了安装：上面的会话跑在 0.2.0-rc.2 上 |
 | 发布的 `swbridge.exe` | CI 从源码重新构建，得到同一个 SHA-256（`bridge/swbridge.exe.sha256`） |
 | 用生成的 `pair.cmd` 配对、登录自启、`uninstall` | 在 0.1.0 上跑过，此后未改动：无需管理员即装好；互斥锁下只有一个实例；卸载后不留痕迹 |
 | 单元测试（Linux，无需 SOLIDWORKS） | 48，包括 2016 成员检查和双方契约检查 |

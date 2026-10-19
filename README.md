@@ -284,6 +284,7 @@ Every claim on this page was run, against real SOLIDWORKS, on 2026-10-18.
 | Live end-to-end, SOLIDWORKS 2019 SP0 (27.0.0) | 66 of 66 checks, same exe |
 | Real dsh 0.2.0-rc.2 + `deepseek-flash`, dsh on Linux, SOLIDWORKS 2019 in a VM (listen) | the four clips above: 12, 17, 23 and 13 tool calls; one refused (a BOM asked of a part: `WRONG_DOC_TYPE`, which the model corrected), the rest completed |
 | Real dsh 0.2.0-rc.2 + `deepseek-flash`, dsh on the Windows PC itself (spawn) | run on 0.1.0, unchanged since: the plugin started its bundled bridge through dsh's subprocess service; 5 tool calls, 5 completed; no bridge left running after dsh exited |
+| `dsh plugin add` on dsh 0.2.1-rc.2 (npm `latest` since 2026-10-19) | the published package installs into a scratch profile and carries no copy of a package dsh supplies; [`dsh-release-watch`](.github/workflows/dsh-release-watch.yml) re-runs this daily and opens an issue when a dsh release refuses it. Install only: the sessions above ran on 0.2.0-rc.2 |
 | The published `swbridge.exe` | rebuilt from source by CI to the same SHA-256 (`bridge/swbridge.exe.sha256`) |
 | Pairing from the generated `pair.cmd`, sign-in start, `uninstall` | run on 0.1.0, unchanged since: installed with no admin, one instance under the mutex, nothing left after uninstall |
 | Unit tests (Linux, no SOLIDWORKS) | 48, including the 2016 member check and both-sides contract checks |
